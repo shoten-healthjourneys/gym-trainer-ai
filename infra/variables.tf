@@ -58,6 +58,12 @@ variable "ciam_client_id" {
   default     = ""
 }
 
+variable "jwt_secret" {
+  description = "Secret key for signing JWT tokens"
+  type        = string
+  sensitive   = true
+}
+
 variable "project_name" {
   description = "Project name used as prefix for all resources"
   type        = string

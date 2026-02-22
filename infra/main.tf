@@ -50,29 +50,11 @@ module "container_apps" {
   anthropic_api_key   = var.anthropic_api_key
   youtube_api_key     = var.youtube_api_key
   deepgram_api_key    = var.deepgram_api_key
+  jwt_secret          = var.jwt_secret
 }
 
-module "auth" {
-  source = "./modules/auth"
-
-  resource_group_name = azurerm_resource_group.rg.name
-  subscription_id     = data.azurerm_client_config.current.subscription_id
-  ciam_tenant_name    = var.ciam_tenant_name
-  ciam_display_name   = var.ciam_display_name
-  ciam_location       = var.ciam_location
-  ciam_client_id      = var.ciam_client_id
-}
-
-module "keyvault" {
-  source = "./modules/keyvault"
-
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
-  project_name        = var.project_name
-  anthropic_api_key   = var.anthropic_api_key
-  youtube_api_key     = var.youtube_api_key
-  deepgram_api_key    = var.deepgram_api_key
-  database_url        = module.postgresql.connection_string
-}
+# TODO: Re-enable when CIAM and Key Vault are needed
+# module "auth" { ... }
+# module "keyvault" { ... }
 
 data "azurerm_client_config" "current" {}

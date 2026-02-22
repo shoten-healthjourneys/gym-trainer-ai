@@ -1,3 +1,5 @@
+import secrets
+
 from pydantic_settings import BaseSettings
 
 
@@ -6,10 +8,8 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
     YOUTUBE_API_KEY: str = ""
     DEEPGRAM_API_KEY: str = ""
-    CIAM_TENANT_NAME: str = ""
-    CIAM_CLIENT_ID: str = ""
+    JWT_SECRET: str = secrets.token_urlsafe(32)
     CORS_ORIGINS: list[str] = ["*"]
-    DEV_MODE: bool = False
 
     model_config = {"env_file": ".env"}
 
