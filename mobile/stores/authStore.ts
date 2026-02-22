@@ -1,48 +1,40 @@
 import { create } from 'zustand';
-import * as SecureStore from 'expo-secure-store';
 import type { User } from '../types';
 import {
-  signIn as authSignIn,
+  login as authLogin,
+  register as authRegister,
   signOut as authSignOut,
-  refreshToken,
-  storeTokens,
-  isTokenExpired,
-  type AuthTokens,
+  getStoredToken,
 } from '../services/auth';
-
-const TOKEN_KEY = 'auth_access_token';
-const REFRESH_TOKEN_KEY = 'auth_refresh_token';
-const ID_TOKEN_KEY = 'auth_id_token';
 
 interface AuthState {
   user: User | null;
-  tokens: AuthTokens | null;
+  accessToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
 
   initialize: () => Promise<void>;
-  signIn: () => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, displayName: string) => Promise<void>;
   signOut: () => Promise<void>;
-  refreshTokens: () => Promise<void>;
   getAccessToken: () => string | null;
   clearError: () => void;
 }
 
-function decodeUserFromIdToken(idToken: string): User | null {
+function decodeUserFromToken(token: string): User | null {
   try {
-    const parts = idToken.split('.');
+    const parts = token.split('.');
     if (parts.length !== 3) return null;
     const payload = JSON.parse(atob(parts[1]!)) as {
       sub?: string;
       name?: string;
-      emails?: string[];
       email?: string;
     };
     return {
       id: payload.sub ?? '',
       displayName: payload.name ?? '',
-      email: payload.emails?.[0] ?? payload.email ?? '',
+      email: payload.email ?? '',
     };
   } catch {
     return null;
@@ -51,7 +43,7 @@ function decodeUserFromIdToken(idToken: string): User | null {
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
-  tokens: null,
+  accessToken: null,
   isAuthenticated: false,
   isLoading: true,
   error: null,
@@ -59,57 +51,46 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   initialize: async () => {
     try {
       set({ isLoading: true, error: null });
-
-      const accessToken = await SecureStore.getItemAsync(TOKEN_KEY);
-      const storedRefreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
-      const idToken = await SecureStore.getItemAsync(ID_TOKEN_KEY);
-
-      if (!accessToken) {
+      const token = await getStoredToken();
+      if (token) {
+        const user = decodeUserFromToken(token);
+        set({ accessToken: token, user, isAuthenticated: true, isLoading: false });
+      } else {
         set({ isLoading: false });
-        return;
       }
-
-      if (!isTokenExpired(accessToken)) {
-        const tokens: AuthTokens = {
-          accessToken,
-          refreshToken: storedRefreshToken,
-          idToken: idToken,
-          expiresIn: null,
-        };
-        const user = idToken ? decodeUserFromIdToken(idToken) : null;
-        set({ tokens, user, isAuthenticated: true, isLoading: false });
-        return;
-      }
-
-      // Token expired, try refresh
-      if (storedRefreshToken) {
-        const refreshed = await refreshToken(storedRefreshToken);
-        if (refreshed) {
-          const user = refreshed.idToken ? decodeUserFromIdToken(refreshed.idToken) : null;
-          set({ tokens: refreshed, user, isAuthenticated: true, isLoading: false });
-          return;
-        }
-      }
-
-      // No valid tokens
-      set({ isLoading: false });
     } catch {
       set({ isLoading: false, error: 'Failed to initialize authentication' });
     }
   },
 
-  signIn: async () => {
+  login: async (email: string, password: string) => {
     try {
       set({ isLoading: true, error: null });
-      const tokens = await authSignIn();
-      if (!tokens) {
-        set({ isLoading: false, error: 'Sign in was cancelled' });
-        return;
-      }
-      const user = tokens.idToken ? decodeUserFromIdToken(tokens.idToken) : null;
-      set({ tokens, user, isAuthenticated: true, isLoading: false });
+      const result = await authLogin(email, password);
+      const user: User = {
+        id: result.userId,
+        displayName: result.displayName,
+        email: result.email,
+      };
+      set({ accessToken: result.accessToken, user, isAuthenticated: true, isLoading: false });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Sign in failed';
+      const message = err instanceof Error ? err.message : 'Login failed';
+      set({ isLoading: false, error: message });
+    }
+  },
+
+  register: async (email: string, password: string, displayName: string) => {
+    try {
+      set({ isLoading: true, error: null });
+      const result = await authRegister(email, password, displayName);
+      const user: User = {
+        id: result.userId,
+        displayName: result.displayName,
+        email: result.email,
+      };
+      set({ accessToken: result.accessToken, user, isAuthenticated: true, isLoading: false });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Registration failed';
       set({ isLoading: false, error: message });
     }
   },
@@ -117,31 +98,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signOut: async () => {
     try {
       await authSignOut();
-      set({ user: null, tokens: null, isAuthenticated: false, error: null });
     } catch {
-      set({ user: null, tokens: null, isAuthenticated: false, error: null });
+      // Ignore
     }
-  },
-
-  refreshTokens: async () => {
-    const { tokens } = get();
-    if (!tokens?.refreshToken) return;
-
-    try {
-      const refreshed = await refreshToken(tokens.refreshToken);
-      if (refreshed) {
-        const user = refreshed.idToken ? decodeUserFromIdToken(refreshed.idToken) : null;
-        set({ tokens: refreshed, user, isAuthenticated: true });
-      } else {
-        set({ user: null, tokens: null, isAuthenticated: false });
-      }
-    } catch {
-      set({ user: null, tokens: null, isAuthenticated: false });
-    }
+    set({ user: null, accessToken: null, isAuthenticated: false, error: null });
   },
 
   getAccessToken: () => {
-    return get().tokens?.accessToken ?? null;
+    return get().accessToken;
   },
 
   clearError: () => {

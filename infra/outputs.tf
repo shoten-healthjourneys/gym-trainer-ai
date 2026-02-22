@@ -13,8 +13,3 @@ output "database_url" {
   value       = module.postgresql.connection_string
   sensitive   = true
 }
-
-output "keyvault_uri" {
-  description = "Azure Key Vault URI"
-  value       = module.keyvault.vault_uri
-}

@@ -3,9 +3,10 @@
 
 -- User profile & training preferences
 CREATE TABLE profiles (
-    id UUID PRIMARY KEY,                          -- matches Azure AD B2C object ID
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     display_name VARCHAR(100),
-    email VARCHAR(255),
+    email VARCHAR(255) UNIQUE,
+    password_hash VARCHAR(255),
     training_goals JSONB,                         -- ["hypertrophy", "strength"]
     experience_level VARCHAR(20),                 -- beginner, intermediate, advanced
     available_days INT,

@@ -1,11 +1,12 @@
--- Dev seed data — fallback user for testing without B2C
--- This UUID is used by the DEV_MODE auth bypass in backend/app/auth.py
+-- Dev seed data — Shoten's user for local development
+-- Email: shotend@gmail.com / Password: Sosho144@
 
-INSERT INTO profiles (id, display_name, email, experience_level, training_goals, available_days, preferred_unit)
+INSERT INTO profiles (id, display_name, email, password_hash, experience_level, training_goals, available_days, preferred_unit)
 VALUES (
-    '00000000-0000-0000-0000-000000000001',
-    'Dev User',
-    'dev@gymtrainer.local',
+    'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+    'Shoten',
+    'shotend@gmail.com',
+    '$2b$12$C1vfvXSolWbLSuu6xowxT.TvpB6FbkxhwJzeDzRSjKd6254hLCRni',
     'intermediate',
     '["hypertrophy", "strength"]',
     4,

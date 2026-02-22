@@ -1,155 +1,74 @@
-import * as AuthSession from 'expo-auth-session';
 import * as SecureStore from 'expo-secure-store';
 
-// --- Dev Mode ---
-
-const DEV_MODE = process.env.EXPO_PUBLIC_DEV_MODE === 'true';
-
-// --- Entra External ID (CIAM) Configuration ---
-
-const TENANT_NAME = process.env.EXPO_PUBLIC_CIAM_TENANT ?? 'gymtrainerciam';
-const CLIENT_ID = process.env.EXPO_PUBLIC_CIAM_CLIENT_ID ?? '';
-
-const CIAM_BASE_URL = `https://${TENANT_NAME}.ciamlogin.com/${TENANT_NAME}.onmicrosoft.com`;
-
-const DISCOVERY: AuthSession.DiscoveryDocument = {
-  authorizationEndpoint: `${CIAM_BASE_URL}/oauth2/v2.0/authorize`,
-  tokenEndpoint: `${CIAM_BASE_URL}/oauth2/v2.0/token`,
-  endSessionEndpoint: `${CIAM_BASE_URL}/oauth2/v2.0/logout`,
-};
-
-const REDIRECT_URI = AuthSession.makeRedirectUri({ scheme: 'gymtrainer' });
-
-const SCOPES = ['openid', 'profile', 'offline_access'];
+const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000';
 
 // --- Secure Store Keys ---
 
 const TOKEN_KEY = 'auth_access_token';
-const REFRESH_TOKEN_KEY = 'auth_refresh_token';
-const ID_TOKEN_KEY = 'auth_id_token';
 
-// --- Token Types ---
+// --- Types ---
 
-export interface AuthTokens {
+export interface AuthResult {
   accessToken: string;
-  refreshToken: string | null;
-  idToken: string | null;
-  expiresIn: number | null;
+  userId: string;
+  email: string;
+  displayName: string;
 }
 
 // --- Public Functions ---
 
-export async function signIn(): Promise<AuthTokens | null> {
-  if (DEV_MODE) {
-    console.warn('DEV_MODE: returning static dev token');
-    const tokens: AuthTokens = {
-      accessToken: 'dev-token',
-      refreshToken: null,
-      idToken: null,
-      expiresIn: 86400,
-    };
-    await storeTokens(tokens);
-    return tokens;
-  }
-
-  const request = new AuthSession.AuthRequest({
-    clientId: CLIENT_ID,
-    scopes: SCOPES,
-    redirectUri: REDIRECT_URI,
-    usePKCE: true,
+export async function login(email: string, password: string): Promise<AuthResult> {
+  const resp = await fetch(`${API_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
   });
 
-  const result = await request.promptAsync(DISCOVERY);
-
-  if (result.type !== 'success' || !result.params['code']) {
-    return null;
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({ detail: 'Login failed' })) as { detail?: string };
+    throw new Error(body.detail ?? 'Login failed');
   }
 
-  const tokenResponse = await AuthSession.exchangeCodeAsync(
-    {
-      clientId: CLIENT_ID,
-      code: result.params['code'],
-      redirectUri: REDIRECT_URI,
-      extraParams: {
-        code_verifier: request.codeVerifier ?? '',
-      },
-    },
-    DISCOVERY,
-  );
+  const data = (await resp.json()) as AuthResult;
+  await SecureStore.setItemAsync(TOKEN_KEY, data.accessToken);
+  return data;
+}
 
-  const tokens: AuthTokens = {
-    accessToken: tokenResponse.accessToken,
-    refreshToken: tokenResponse.refreshToken ?? null,
-    idToken: tokenResponse.idToken ?? null,
-    expiresIn: tokenResponse.expiresIn ?? null,
-  };
+export async function register(
+  email: string,
+  password: string,
+  displayName: string,
+): Promise<AuthResult> {
+  const resp = await fetch(`${API_URL}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, display_name: displayName }),
+  });
 
-  await storeTokens(tokens);
-  return tokens;
+  if (!resp.ok) {
+    const body = (await resp.json().catch(() => ({ detail: 'Registration failed' }))) as { detail?: string };
+    throw new Error(body.detail ?? 'Registration failed');
+  }
+
+  const data = (await resp.json()) as AuthResult;
+  await SecureStore.setItemAsync(TOKEN_KEY, data.accessToken);
+  return data;
 }
 
 export async function signOut(): Promise<void> {
   await SecureStore.deleteItemAsync(TOKEN_KEY);
-  await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
-  await SecureStore.deleteItemAsync(ID_TOKEN_KEY);
-}
-
-export async function refreshToken(currentRefreshToken: string): Promise<AuthTokens | null> {
-  try {
-    const tokenResponse = await AuthSession.refreshAsync(
-      {
-        clientId: CLIENT_ID,
-        refreshToken: currentRefreshToken,
-      },
-      DISCOVERY,
-    );
-
-    const tokens: AuthTokens = {
-      accessToken: tokenResponse.accessToken,
-      refreshToken: tokenResponse.refreshToken ?? currentRefreshToken,
-      idToken: tokenResponse.idToken ?? null,
-      expiresIn: tokenResponse.expiresIn ?? null,
-    };
-
-    await storeTokens(tokens);
-    return tokens;
-  } catch {
-    // Refresh failed — user needs to sign in again
-    await signOut();
-    return null;
-  }
 }
 
 export async function getStoredToken(): Promise<string | null> {
-  if (DEV_MODE) {
-    return 'dev-token';
-  }
-
   const token = await SecureStore.getItemAsync(TOKEN_KEY);
   if (token && isTokenExpired(token)) {
-    const stored = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
-    if (stored) {
-      const refreshed = await refreshToken(stored);
-      return refreshed?.accessToken ?? null;
-    }
+    await SecureStore.deleteItemAsync(TOKEN_KEY);
     return null;
   }
   return token;
 }
 
-export async function storeTokens(tokens: AuthTokens): Promise<void> {
-  await SecureStore.setItemAsync(TOKEN_KEY, tokens.accessToken);
-  if (tokens.refreshToken) {
-    await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, tokens.refreshToken);
-  }
-  if (tokens.idToken) {
-    await SecureStore.setItemAsync(ID_TOKEN_KEY, tokens.idToken);
-  }
-}
-
 export function isTokenExpired(token: string): boolean {
-  if (DEV_MODE) return false;
-
   try {
     const parts = token.split('.');
     if (parts.length !== 3) return true;
@@ -157,7 +76,6 @@ export function isTokenExpired(token: string): boolean {
     const payload = JSON.parse(atob(parts[1]!)) as { exp?: number };
     if (!payload.exp) return true;
 
-    // Consider expired 60 seconds before actual expiry
     const nowSeconds = Math.floor(Date.now() / 1000);
     return payload.exp - 60 < nowSeconds;
   } catch {

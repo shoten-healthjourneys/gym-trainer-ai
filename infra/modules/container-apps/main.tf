@@ -52,6 +52,11 @@ resource "azurerm_container_app" "api" {
   }
 
   secret {
+    name  = "jwt-secret"
+    value = var.jwt_secret
+  }
+
+  secret {
     name  = "acr-password"
     value = azurerm_container_registry.acr.admin_password
   }
@@ -90,6 +95,11 @@ resource "azurerm_container_app" "api" {
       env {
         name        = "DEEPGRAM_API_KEY"
         secret_name = "deepgram-api-key"
+      }
+
+      env {
+        name        = "JWT_SECRET"
+        secret_name = "jwt-secret"
       }
     }
   }

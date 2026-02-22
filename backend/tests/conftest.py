@@ -2,9 +2,7 @@ import os
 
 # Set dummy env vars BEFORE any app imports (Settings validates on import)
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
-os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
-os.environ.setdefault("CIAM_TENANT_NAME", "testtenant")
-os.environ.setdefault("CIAM_CLIENT_ID", "test-client-id")
+os.environ.setdefault("JWT_SECRET", "test-secret")
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager

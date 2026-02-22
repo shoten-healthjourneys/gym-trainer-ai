@@ -4,6 +4,8 @@
 
 A personal AI-powered gym trainer app for Android. Chat with a Claude-powered agent (via Microsoft Agent Framework) that plans balanced weekly workouts, finds YouTube demos for exercises, and tracks progressive overload via voice logging during sessions. Backend runs on Azure, tools exposed via MCP, infrastructure managed with Terraform.
 
+> **Auth Simplification (MVP):** The original plan used Azure AD B2C with Google Sign-In as the identity provider. For the MVP phase, auth has been simplified to **email/password registration and login** with bcrypt password hashing and HS256 JWT tokens issued directly by the FastAPI backend. No external auth provider is required. The `infra/modules/auth/` Terraform module (CIAM) is commented out and not deployed.
+
 ---
 
 ## Tech Stack
@@ -16,7 +18,7 @@ A personal AI-powered gym trainer app for Android. Chat with a Claude-powered ag
 | **Tool Protocol** | Model Context Protocol (MCP) — HTTP transport |
 | **Backend Runtime** | Python (FastAPI) on Azure Container Apps |
 | **Database** | Azure PostgreSQL Flexible Server |
-| **Auth** | Azure AD B2C with Google identity provider |
+| **Auth** | Email/password with bcrypt + HS256 JWT (backend-issued) |
 | **Voice (primary)** | Android native STT (`@react-native-voice/voice`) |
 | **Voice (fallback)** | Deepgram streaming API |
 | **Design System** | React Native Paper (Material Design 3) |
@@ -67,11 +69,11 @@ A personal AI-powered gym trainer app for Android. Chat with a Claude-powered ag
 └───────────┼──────────────────────────────────────────────────┘
             │
      ┌──────┼──────┐
-     │      │      │
-     ▼      ▼      ▼
- Azure    Azure   Azure
- PG DB   AD B2C  Container
-                  Registry
+     │             │
+     ▼             ▼
+ Azure          Azure
+ PG DB        Container
+              Registry
 ```
 
 ---
@@ -84,24 +86,29 @@ A personal AI-powered gym trainer app for Android. Chat with a Claude-powered ag
 sequenceDiagram
     participant U as User
     participant App as React Native App
-    participant B2C as Azure AD B2C
-    participant Google as Google OAuth
     participant API as FastAPI Backend
     participant DB as Azure PostgreSQL
 
-    U->>App: Tap "Sign in with Google"
-    App->>B2C: Initiate OAuth flow
-    B2C->>Google: Redirect to Google consent
-    Google->>U: Show consent screen
-    U->>Google: Grant permission
-    Google->>B2C: Return auth code
-    B2C->>B2C: Exchange code for tokens
-    B2C->>App: Return ID token + access token
-    App->>API: POST /auth/register (ID token)
-    API->>DB: UPSERT profiles (user_id, display_name, email)
-    DB-->>API: OK
-    API-->>App: 200 + session info
-    App->>App: Store tokens in SecureStore
+    U->>App: Enter email + password
+    U->>App: Tap "Register" or "Login"
+
+    alt New user registration
+        App->>API: POST /auth/register {email, password, display_name}
+        API->>API: Validate input + hash password (bcrypt)
+        API->>DB: INSERT INTO profiles (email, password_hash, display_name)
+        DB-->>API: OK
+        API->>API: Generate HS256 JWT (user_id, email)
+        API-->>App: 200 {access_token, user}
+    else Existing user login
+        App->>API: POST /auth/login {email, password}
+        API->>DB: SELECT * FROM profiles WHERE email = ?
+        DB-->>API: Profile row with password_hash
+        API->>API: Verify password (bcrypt)
+        API->>API: Generate HS256 JWT (user_id, email)
+        API-->>App: 200 {access_token, user}
+    end
+
+    App->>App: Store JWT in SecureStore
     App->>U: Navigate to Chat (home)
 ```
 
@@ -499,8 +506,7 @@ gym-trainer-rg (Resource Group)
 │   └── gym-trainer-api (Container App — FastAPI + MCP server)
 ├── gym-trainer-pg (Azure PostgreSQL Flexible Server)
 │   └── gym-trainer-db (PostgreSQL Database)
-├── gym-trainer-b2c (Azure AD B2C Tenant)
-├── gym-trainer-kv (Key Vault — API keys, connection strings)
+├── gym-trainer-kv (Key Vault — API keys, connection strings, JWT secret)
 └── gym-trainer-log (Log Analytics Workspace)
 ```
 
@@ -521,8 +527,8 @@ infra/
 │   │   ├── main.tf            # ACR + ACA Environment + Container App
 │   │   ├── variables.tf
 │   │   └── outputs.tf
-│   ├── auth/
-│   │   ├── main.tf            # AD B2C tenant + Google IdP + App registration
+│   ├── auth/                  # COMMENTED OUT — not needed for email/password MVP
+│   │   ├── main.tf            # (Was: AD B2C tenant + Google IdP — now unused)
 │   │   ├── variables.tf
 │   │   └── outputs.tf
 │   └── keyvault/
@@ -605,7 +611,6 @@ resource "azurerm_postgresql_flexible_server_database" "db" {
 | Azure PostgreSQL | Burstable B1ms | £10 |
 | Container Apps | Consumption (scale to 0) | £0-5 |
 | Container Registry | Basic | £3.50 |
-| AD B2C | Free tier (50k auth/month) | £0 |
 | Key Vault | Standard | £0.02 |
 | Log Analytics | Free tier (5GB) | £0 |
 | **Total** | | **~£14-19/month** |
@@ -805,9 +810,10 @@ const streamChat = async (message: string) => {
 ```sql
 -- User profile & training preferences
 CREATE TABLE profiles (
-    id UUID PRIMARY KEY,  -- matches Azure AD B2C object ID
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     display_name VARCHAR(100),
-    email VARCHAR(255),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,  -- bcrypt hashed password
     training_goals JSONB,              -- ["hypertrophy", "strength"]
     experience_level VARCHAR(20),      -- beginner, intermediate, advanced
     available_days INT,
@@ -896,7 +902,7 @@ gym-trainer/
 │   ├── app/
 │   │   ├── main.py                 # FastAPI app + SSE endpoints
 │   │   ├── config.py               # Settings from env vars
-│   │   ├── auth.py                 # Azure AD B2C token validation
+│   │   ├── auth.py                 # JWT auth (bcrypt + HS256 token issue/validate)
 │   │   ├── agent/
 │   │   │   ├── gym_trainer.py      # Agent Framework setup + system prompt
 │   │   │   ├── voice_parser.py     # Haiku voice parsing agent
@@ -932,7 +938,7 @@ gym-trainer/
 │   │   │   ├── progress.tsx        # Progress charts
 │   │   │   └── profile.tsx         # Settings
 │   │   └── auth/
-│   │       └── login.tsx           # Google sign-in via B2C
+│   │       └── login.tsx           # Email/password login + registration
 │   ├── components/
 │   │   ├── chat/
 │   │   │   ├── MessageBubble.tsx
@@ -953,7 +959,7 @@ gym-trainer/
 │   │   ├── api.ts                  # Base API client + auth headers
 │   │   ├── sse.ts                  # SSE stream consumer
 │   │   ├── voice.ts                # STT abstraction (native + Deepgram)
-│   │   └── auth.ts                 # Azure AD B2C auth flow
+│   │   └── auth.ts                 # Email/password auth (register, login, token storage)
 │   ├── theme.ts                    # React Native Paper MD3 theme config
 │   ├── stores/
 │   │   ├── authStore.ts
@@ -1032,12 +1038,12 @@ Implementation is structured as **Foundation + 5 Journey Phases**. Foundation bu
 | | T3: Dockerfile + deploy script | `backend/Dockerfile`, `infra/scripts/deploy.sh` | ✅ |
 | | T4: GitHub Actions CI + EAS config | `.github/workflows/`, `mobile/eas.json` | ✅ |
 | **backend-agent** | T1: FastAPI scaffold + config + DB connection | `backend/app/main.py`, `config.py`, `db.py` | ✅ |
-| | T2: Auth middleware (AD B2C token validation) | `backend/app/auth.py` | ✅ |
+| | T2: Auth middleware (JWT issue + validation, bcrypt password hashing) | `backend/app/auth.py` | ✅ |
 | | T3: Profile REST routes (GET/PUT) | `backend/app/routes/profile.py` | ✅ |
 | **frontend-chat-agent** | T1: Expo project init + navigation scaffold | `mobile/app/_layout.tsx`, `package.json` | ✅ |
 | | T2: Paper theme config (colours, fonts, dark mode) | `mobile/theme.ts` | ✅ |
 | | T3: API service (base client + auth headers) | `mobile/services/api.ts` | ✅ |
-| | T4: Auth service (B2C + Google Sign-In) | `mobile/services/auth.ts` | ✅ |
+| | T4: Auth service (email/password register + login) | `mobile/services/auth.ts` | ✅ |
 | **frontend-workout-agent** | T1: Type definitions (all shared types) | `mobile/types/index.ts` | ✅ |
 | | T2: Workout store skeleton | `mobile/stores/workoutStore.ts` | ✅ |
 | | T3: Profile store skeleton | `mobile/stores/profileStore.ts` | ✅ |
@@ -1050,22 +1056,22 @@ Implementation is structured as **Foundation + 5 Journey Phases**. Foundation bu
 
 #### Phase 1: Onboarding — Journeys 1 & 2 (Hours 4-6) ✅ COMPLETED
 
-**Delivers:** User can sign in with Google and set up their training profile.
+**Delivers:** User can register/login with email and password and set up their training profile.
 
 | Agent | Tasks | Journey | Files | Status |
 |---|---|---|---|---|
 | **infra-agent** | T5: Terraform validate + fix issues | — | `infra/**` | ✅ |
 | | T6: Integration test script (test-api.sh) | — | `infra/scripts/test-api.sh` | ✅ |
 | **backend-agent** | T4: Profile route tests (7 tests, all passing) | J2 | `backend/tests/` | ✅ |
-| **frontend-chat-agent** | T5: Login screen (Google Sign-In via B2C) | J1 | `mobile/app/auth/login.tsx` | ✅ |
+| **frontend-chat-agent** | T5: Login screen (email/password form) | J1 | `mobile/app/auth/login.tsx` | ✅ |
 | | T6: Auth store (tokens, user state, SecureStore) | J1 | `mobile/stores/authStore.ts` | ✅ |
 | | T7: Auth-gated layout (redirect to login if no token) | J1 | `mobile/app/_layout.tsx` | ✅ |
 | **frontend-workout-agent** | T4: Profile screen (form + save) | J2 | `mobile/app/(tabs)/profile.tsx` | ✅ |
 | | T5: Profile store (GET/PUT integration) | J2 | `mobile/stores/profileStore.ts` | ✅ |
 
-**Gate:** Can sign in with Google → lands on chat → navigate to Profile → fill in goals/experience/days → save → data persists in Azure PostgreSQL. Infra deployed and reachable.
+**Gate:** Can register or login with email/password → lands on chat → navigate to Profile → fill in goals/experience/days → save → data persists in Azure PostgreSQL. Infra deployed and reachable.
 
-**Notes:** Terraform validated and fixed (auth module missing resource_group_name). Actual `terraform apply` deferred to manual deployment. Type mismatch between api.ts UserProfile and types/index.ts Profile flagged — to be aligned in Phase 2.
+**Notes:** Terraform validated and fixed (auth module commented out — not needed for email/password MVP). Actual `terraform apply` deferred to manual deployment. Type mismatch between api.ts UserProfile and types/index.ts Profile flagged — to be aligned in Phase 2.
 
 ---
 
@@ -1179,7 +1185,7 @@ Personal AI gym trainer React Native app. Backend is Python FastAPI on Azure,
 AI agent uses Microsoft Agent Framework with Claude Sonnet, tools via MCP.
 
 ## Architecture
-- `infra/` — Terraform for Azure (PostgreSQL, Container Apps, AD B2C, Key Vault)
+- `infra/` — Terraform for Azure (PostgreSQL, Container Apps, Key Vault)
 - `backend/` — Python FastAPI + MCP tool server + Agent Framework
 - `mobile/` — React Native Expo (Android only)
 
@@ -1229,7 +1235,8 @@ uvicorn[standard]>=0.34
 agent-framework-anthropic>=1.0.0rc1
 fastmcp>=0.5
 asyncpg>=0.30
-python-jose[cryptography]>=3.3      # JWT validation for AD B2C
+python-jose[cryptography]>=3.3      # HS256 JWT creation + validation
+passlib[bcrypt]>=1.7                # bcrypt password hashing
 httpx>=0.27                          # YouTube API calls
 pydantic>=2.10
 ```
@@ -1241,7 +1248,6 @@ pydantic>=2.10
   "dependencies": {
     "expo": "~52.x",
     "expo-router": "~4.x",
-    "expo-auth-session": "*",
     "expo-secure-store": "*",
     "react-native-paper": "^5.x",
     "react-native-safe-area-context": "*",
