@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install mobile deps
+        run: cd mobile && npm ci
+
+      - name: TypeScript check
+        run: cd mobile && npx tsc --noEmit
+
+      - name: Lint
+        run: cd mobile && npx eslint .
+
+      - name: Unit tests
+        run: cd mobile && npx jest --coverage
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend deps
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: Backend tests
+        run: |
+          cd backend
+          pytest tests/ -v
+
+  preview-build:
+    needs: lint-and-test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Expo
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install deps
+        run: cd mobile && npm ci
+
+      - name: Build preview APK
+        run: cd mobile && eas build --profile preview --platform android --non-interactive

@@ -9,7 +9,7 @@ Detailed implementation plan can be found here - Gym Trainer Implementation Plan
 
 ## Architecture
 - Sequence diagrams can be found here - Architecture
-- `infra/` — Terraform for Azure (SQL, Container Apps, AD B2C, Key Vault)
+- `infra/` — Terraform for Azure (PostgreSQL, Container Apps, AD B2C, Key Vault)
 - `backend/` — Python FastAPI + MCP tool server + Agent Framework
 - `mobile/` — React Native Expo (Android only)
 

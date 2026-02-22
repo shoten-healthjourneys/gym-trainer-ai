@@ -15,7 +15,7 @@ A personal AI-powered gym trainer app for Android. Chat with a Claude-powered ag
 | **AI Models** | Claude Sonnet (planning agent), Claude Haiku (voice parsing) |
 | **Tool Protocol** | Model Context Protocol (MCP) — HTTP transport |
 | **Backend Runtime** | Python (FastAPI) on Azure Container Apps |
-| **Database** | Azure SQL Database |
+| **Database** | Azure PostgreSQL Flexible Server |
 | **Auth** | Azure AD B2C with Google identity provider |
 | **Voice (primary)** | Android native STT (`@react-native-voice/voice`) |
 | **Voice (fallback)** | Deepgram streaming API |
@@ -70,7 +70,7 @@ A personal AI-powered gym trainer app for Android. Chat with a Claude-powered ag
      │      │      │
      ▼      ▼      ▼
  Azure    Azure   Azure
- SQL DB   AD B2C  Container
+ PG DB   AD B2C  Container
                   Registry
 ```
 
@@ -87,7 +87,7 @@ sequenceDiagram
     participant B2C as Azure AD B2C
     participant Google as Google OAuth
     participant API as FastAPI Backend
-    participant DB as Azure SQL
+    participant DB as Azure PostgreSQL
 
     U->>App: Tap "Sign in with Google"
     App->>B2C: Initiate OAuth flow
@@ -115,7 +115,7 @@ sequenceDiagram
     participant AF as Agent Framework
     participant Claude as Claude Sonnet
     participant MCP as MCP Tool Server
-    participant DB as Azure SQL
+    participant DB as Azure PostgreSQL
     participant YT as YouTube API
 
     U->>App: "Plan my workouts for this week. I can train Mon, Wed, Fri, Sat"
@@ -189,7 +189,7 @@ sequenceDiagram
     participant DG as Deepgram (fallback)
     participant API as FastAPI
     participant Haiku as Claude Haiku
-    participant DB as Azure SQL
+    participant DB as Azure PostgreSQL
 
     U->>App: Hold mic button
     App->>STT: Start recognition
@@ -229,7 +229,7 @@ sequenceDiagram
     participant U as User
     participant App as React Native App
     participant API as FastAPI
-    participant DB as Azure SQL
+    participant DB as Azure PostgreSQL
 
     U->>App: Navigate to Progress tab
     App->>API: GET /exercises/names?user_id=xxx
@@ -256,7 +256,7 @@ sequenceDiagram
     participant U as User
     participant App as React Native App
     participant API as FastAPI
-    participant DB as Azure SQL
+    participant DB as Azure PostgreSQL
 
     U->>App: Navigate to Schedule tab
     App->>API: GET /sessions?week_start=2026-02-23
@@ -295,7 +295,7 @@ sequenceDiagram
     participant App as React Native App
     participant Store as profileStore (Zustand)
     participant API as FastAPI Backend
-    participant DB as Azure SQL
+    participant DB as Azure PostgreSQL
 
     U->>App: Tap Profile tab
     App->>Store: getProfile()
@@ -327,7 +327,7 @@ sequenceDiagram
     participant App as React Native App
     participant Store as workoutStore (Zustand)
     participant API as FastAPI Backend
-    participant DB as Azure SQL
+    participant DB as Azure PostgreSQL
     participant WV as WebView (YouTube)
 
     U->>App: Tap Schedule tab
@@ -364,7 +364,7 @@ sequenceDiagram
     participant App as Active Workout Screen
     participant Store as workoutStore (Zustand)
     participant API as FastAPI Backend
-    participant DB as Azure SQL
+    participant DB as Azure PostgreSQL
 
     Note over App: Displayed: Set 1: 80kg × 8 ✓ | Set 2: 85kg × 3 ← wrong
 
@@ -397,7 +397,7 @@ sequenceDiagram
     participant SSE as SSE Stream
     participant Agent as Agent Framework (Sonnet)
     participant MCP as MCP Tools
-    participant DB as Azure SQL
+    participant DB as Azure PostgreSQL
 
     U->>App: "My shoulder hurts. Can you modify Wednesday's push day?"
     App->>SSE: POST /chat/stream
@@ -432,7 +432,7 @@ sequenceDiagram
     participant SSE as SSE Stream
     participant Agent as Agent Framework (Sonnet)
     participant MCP as MCP Tools
-    participant DB as Azure SQL
+    participant DB as Azure PostgreSQL
 
     U->>App: "Can't train Thursday. Move it to Saturday."
     App->>SSE: POST /chat/stream
@@ -497,8 +497,8 @@ gym-trainer-rg (Resource Group)
 ├── gym-trainer-acr (Azure Container Registry)
 ├── gym-trainer-aca-env (Container Apps Environment)
 │   └── gym-trainer-api (Container App — FastAPI + MCP server)
-├── gym-trainer-sql (Azure SQL Server)
-│   └── gym-trainer-db (Azure SQL Database)
+├── gym-trainer-pg (Azure PostgreSQL Flexible Server)
+│   └── gym-trainer-db (PostgreSQL Database)
 ├── gym-trainer-b2c (Azure AD B2C Tenant)
 ├── gym-trainer-kv (Key Vault — API keys, connection strings)
 └── gym-trainer-log (Log Analytics Workspace)
@@ -513,8 +513,8 @@ infra/
 ├── outputs.tf                 # Connection strings, endpoints
 ├── terraform.tfvars           # Personal config values
 ├── modules/
-│   ├── sql/
-│   │   ├── main.tf            # Azure SQL Server + Database
+│   ├── postgresql/
+│   │   ├── main.tf            # Azure PostgreSQL Flexible Server + Database
 │   │   ├── variables.tf
 │   │   └── outputs.tf
 │   ├── container-apps/
@@ -578,13 +578,23 @@ resource "azurerm_container_app" "api" {
   }
 }
 
-# Azure SQL (Basic tier — cheapest, fine for personal use)
-resource "azurerm_mssql_database" "db" {
-  name         = "gym-trainer-db"
-  server_id    = azurerm_mssql_server.sql.id
-  collation    = "SQL_Latin1_General_CP1_CI_AS"
-  sku_name     = "Basic"  # 5 DTUs, ~£3.50/month
-  max_size_gb  = 2
+# Azure PostgreSQL (Burstable B1ms — good for personal use)
+resource "azurerm_postgresql_flexible_server" "pg" {
+  name                   = "gym-trainer-pg"
+  resource_group_name    = azurerm_resource_group.rg.name
+  location               = azurerm_resource_group.rg.location
+  administrator_login    = var.pg_admin_username
+  administrator_password = var.pg_admin_password
+  sku_name               = "B_Standard_B1ms"  # ~£10/month
+  storage_mb             = 32768
+  version                = "16"
+}
+
+resource "azurerm_postgresql_flexible_server_database" "db" {
+  name      = "gym-trainer-db"
+  server_id = azurerm_postgresql_flexible_server.pg.id
+  collation = "en_US.utf8"
+  charset   = "UTF8"
 }
 ```
 
@@ -592,13 +602,13 @@ resource "azurerm_mssql_database" "db" {
 
 | Resource | SKU | ~Cost/month |
 |---|---|---|
-| Azure SQL Database | Basic (5 DTU) | £3.50 |
+| Azure PostgreSQL | Burstable B1ms | £10 |
 | Container Apps | Consumption (scale to 0) | £0-5 |
 | Container Registry | Basic | £3.50 |
 | AD B2C | Free tier (50k auth/month) | £0 |
 | Key Vault | Standard | £0.02 |
 | Log Analytics | Free tier (5GB) | £0 |
-| **Total** | | **~£7-12/month** |
+| **Total** | | **~£14-19/month** |
 
 ---
 
@@ -790,68 +800,68 @@ const streamChat = async (message: string) => {
 
 ---
 
-## Database Schema (Azure SQL)
+## Database Schema (Azure PostgreSQL)
 
 ```sql
 -- User profile & training preferences
 CREATE TABLE profiles (
-    id UNIQUEIDENTIFIER PRIMARY KEY,  -- matches Azure AD B2C object ID
-    display_name NVARCHAR(100),
-    email NVARCHAR(255),
-    training_goals NVARCHAR(MAX),      -- JSON array: ["hypertrophy", "strength"]
-    experience_level NVARCHAR(20),     -- beginner, intermediate, advanced
+    id UUID PRIMARY KEY,  -- matches Azure AD B2C object ID
+    display_name VARCHAR(100),
+    email VARCHAR(255),
+    training_goals JSONB,              -- ["hypertrophy", "strength"]
+    experience_level VARCHAR(20),      -- beginner, intermediate, advanced
     available_days INT,
-    preferred_unit NVARCHAR(5) DEFAULT 'kg',  -- kg or lbs
-    created_at DATETIME2 DEFAULT GETUTCDATE(),
-    updated_at DATETIME2 DEFAULT GETUTCDATE()
+    preferred_unit VARCHAR(5) DEFAULT 'kg',  -- kg or lbs
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Weekly workout plans generated by AI
 CREATE TABLE workout_plans (
-    id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    user_id UNIQUEIDENTIFIER REFERENCES profiles(id),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES profiles(id),
     week_start DATE NOT NULL,
-    plan_json NVARCHAR(MAX) NOT NULL,  -- Full structured plan from Claude
-    notes NVARCHAR(MAX),
-    created_at DATETIME2 DEFAULT GETUTCDATE()
+    plan_json JSONB NOT NULL,          -- Full structured plan from Claude
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Individual scheduled workout sessions
 CREATE TABLE workout_sessions (
-    id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    user_id UNIQUEIDENTIFIER REFERENCES profiles(id),
-    plan_id UNIQUEIDENTIFIER REFERENCES workout_plans(id),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES profiles(id),
+    plan_id UUID REFERENCES workout_plans(id),
     scheduled_date DATE NOT NULL,
-    title NVARCHAR(100) NOT NULL,
-    status NVARCHAR(20) DEFAULT 'scheduled',  -- scheduled, in_progress, completed, skipped
-    exercises NVARCHAR(MAX) NOT NULL,          -- JSON: exercises with YouTube URLs
-    started_at DATETIME2,
-    completed_at DATETIME2,
-    created_at DATETIME2 DEFAULT GETUTCDATE()
+    title VARCHAR(100) NOT NULL,
+    status VARCHAR(20) DEFAULT 'scheduled',  -- scheduled, in_progress, completed, skipped
+    exercises JSONB NOT NULL,                 -- exercises with YouTube URLs
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Individual sets logged during workout (progressive overload data)
 CREATE TABLE exercise_logs (
-    id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    user_id UNIQUEIDENTIFIER REFERENCES profiles(id),
-    session_id UNIQUEIDENTIFIER REFERENCES workout_sessions(id),
-    exercise_name NVARCHAR(100) NOT NULL,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES profiles(id),
+    session_id UUID REFERENCES workout_sessions(id),
+    exercise_name VARCHAR(100) NOT NULL,
     set_number INT NOT NULL,
     weight_kg DECIMAL(5,1),
     reps INT NOT NULL,
     rpe DECIMAL(3,1),
-    notes NVARCHAR(500),
-    logged_at DATETIME2 DEFAULT GETUTCDATE()
+    notes VARCHAR(500),
+    logged_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Chat history with the AI agent
 CREATE TABLE chat_messages (
-    id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    user_id UNIQUEIDENTIFIER REFERENCES profiles(id),
-    role NVARCHAR(20) NOT NULL,  -- 'user' or 'assistant'
-    content NVARCHAR(MAX) NOT NULL,
-    tool_calls NVARCHAR(MAX),    -- JSON: if Claude used tools
-    created_at DATETIME2 DEFAULT GETUTCDATE()
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES profiles(id),
+    role VARCHAR(20) NOT NULL,  -- 'user' or 'assistant'
+    content TEXT NOT NULL,
+    tool_calls JSONB,           -- if Claude used tools
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Indexes for performance
@@ -905,7 +915,7 @@ gym-trainer/
 │   │   │   ├── sessions.py         # CRUD workout sessions
 │   │   │   ├── exercises.py        # Exercise history + progress
 │   │   │   └── profile.py          # User profile CRUD
-│   │   └── db.py                   # Azure SQL connection (aioodbc)
+│   │   └── db.py                   # PostgreSQL connection (asyncpg)
 │   └── tests/
 │       ├── test_mcp_tools.py
 │       ├── test_voice_parser.py
@@ -1011,47 +1021,51 @@ Key principles:
 
 Implementation is structured as **Foundation + 5 Journey Phases**. Foundation builds all scaffolding and infrastructure. Each subsequent phase delivers 1-3 complete user journeys end-to-end, across all layers (backend routes, MCP tools, agent integration, frontend screens, stores). Agents still work in parallel within each phase, but the work is organised around delivering working user flows rather than disconnected features.
 
-#### Foundation (Hours 0-4) — All 4 agents in parallel
+#### Foundation (Hours 0-4) — All 4 agents in parallel ✅ COMPLETED
 
 **Goal:** Deployable infrastructure, running app with navigation, auth plumbed, DB schema live.
 
-| Agent | Tasks | Files | Hours |
+| Agent | Tasks | Files | Status |
 |---|---|---|---|
-| **infra-agent** | T1: Terraform modules (SQL, ACA, ACR, KV) | `infra/**` | 2h |
-| | T2: seed.sql schema migration | `infra/scripts/seed.sql` | 0.5h |
-| | T3: Dockerfile + deploy script | `backend/Dockerfile`, `infra/scripts/deploy.sh` | 0.5h |
-| | T4: GitHub Actions CI + EAS config | `.github/workflows/`, `mobile/eas.json` | 1h |
-| **backend-agent** | T1: FastAPI scaffold + config + DB connection | `backend/app/main.py`, `config.py`, `db.py` | 1h |
-| | T2: Auth middleware (AD B2C token validation) | `backend/app/auth.py` | 1h |
-| | T3: Profile REST routes (GET/PUT) | `backend/app/routes/profile.py` | 1h |
-| **frontend-chat-agent** | T1: Expo project init + navigation scaffold | `mobile/app/_layout.tsx`, `package.json` | 1h |
-| | T2: Paper theme config (colours, fonts, dark mode) | `mobile/theme.ts` | 0.5h |
-| | T3: API service (base client + auth headers) | `mobile/services/api.ts` | 0.5h |
-| | T4: Auth service (B2C + Google Sign-In) | `mobile/services/auth.ts` | 0.5h |
-| **frontend-workout-agent** | T1: Type definitions (all shared types) | `mobile/types/index.ts` | 1h |
-| | T2: Workout store skeleton | `mobile/stores/workoutStore.ts` | 0.5h |
-| | T3: Profile store skeleton | `mobile/stores/profileStore.ts` | 0.5h |
+| **infra-agent** | T1: Terraform modules (PostgreSQL, ACA, ACR, KV) | `infra/**` | ✅ |
+| | T2: seed.sql schema migration | `infra/scripts/seed.sql` | ✅ |
+| | T3: Dockerfile + deploy script | `backend/Dockerfile`, `infra/scripts/deploy.sh` | ✅ |
+| | T4: GitHub Actions CI + EAS config | `.github/workflows/`, `mobile/eas.json` | ✅ |
+| **backend-agent** | T1: FastAPI scaffold + config + DB connection | `backend/app/main.py`, `config.py`, `db.py` | ✅ |
+| | T2: Auth middleware (AD B2C token validation) | `backend/app/auth.py` | ✅ |
+| | T3: Profile REST routes (GET/PUT) | `backend/app/routes/profile.py` | ✅ |
+| **frontend-chat-agent** | T1: Expo project init + navigation scaffold | `mobile/app/_layout.tsx`, `package.json` | ✅ |
+| | T2: Paper theme config (colours, fonts, dark mode) | `mobile/theme.ts` | ✅ |
+| | T3: API service (base client + auth headers) | `mobile/services/api.ts` | ✅ |
+| | T4: Auth service (B2C + Google Sign-In) | `mobile/services/auth.ts` | ✅ |
+| **frontend-workout-agent** | T1: Type definitions (all shared types) | `mobile/types/index.ts` | ✅ |
+| | T2: Workout store skeleton | `mobile/stores/workoutStore.ts` | ✅ |
+| | T3: Profile store skeleton | `mobile/stores/profileStore.ts` | ✅ |
 
 **Gate:** Backend serves `/health`, Terraform plans clean, Expo app launches with tab navigation, API service can make authenticated requests.
 
+**Decision log:** Switched from Azure SQL to Azure PostgreSQL Flexible Server (JSONB, asyncpg, better Python DX). Updated all schema, Terraform modules, and backend to use PostgreSQL.
+
 ---
 
-#### Phase 1: Onboarding — Journeys 1 & 2 (Hours 4-6)
+#### Phase 1: Onboarding — Journeys 1 & 2 (Hours 4-6) ✅ COMPLETED
 
 **Delivers:** User can sign in with Google and set up their training profile.
 
-| Agent | Tasks | Journey | Files | Hours |
+| Agent | Tasks | Journey | Files | Status |
 |---|---|---|---|---|
-| **infra-agent** | T5: `terraform apply` + validate infra live | — | `infra/**` | 1h |
-| | T6: Integration test — API reachable from ACA | — | Scripts | 0.5h |
-| **backend-agent** | T4: Profile route tests | J2 | `backend/tests/test_profile.py` | 0.5h |
-| **frontend-chat-agent** | T5: Login screen (Google Sign-In via B2C) | J1 | `mobile/app/auth/login.tsx` | 1h |
-| | T6: Auth store (tokens, user state, SecureStore) | J1 | `mobile/stores/authStore.ts` | 0.5h |
-| | T7: Auth-gated layout (redirect to login if no token) | J1 | `mobile/app/_layout.tsx` | 0.5h |
-| **frontend-workout-agent** | T4: Profile screen (form + save) | J2 | `mobile/app/(tabs)/profile.tsx` | 1.5h |
-| | T5: Profile store (GET/PUT integration) | J2 | `mobile/stores/profileStore.ts` | 0.5h |
+| **infra-agent** | T5: Terraform validate + fix issues | — | `infra/**` | ✅ |
+| | T6: Integration test script (test-api.sh) | — | `infra/scripts/test-api.sh` | ✅ |
+| **backend-agent** | T4: Profile route tests (7 tests, all passing) | J2 | `backend/tests/` | ✅ |
+| **frontend-chat-agent** | T5: Login screen (Google Sign-In via B2C) | J1 | `mobile/app/auth/login.tsx` | ✅ |
+| | T6: Auth store (tokens, user state, SecureStore) | J1 | `mobile/stores/authStore.ts` | ✅ |
+| | T7: Auth-gated layout (redirect to login if no token) | J1 | `mobile/app/_layout.tsx` | ✅ |
+| **frontend-workout-agent** | T4: Profile screen (form + save) | J2 | `mobile/app/(tabs)/profile.tsx` | ✅ |
+| | T5: Profile store (GET/PUT integration) | J2 | `mobile/stores/profileStore.ts` | ✅ |
 
-**Gate:** Can sign in with Google → lands on chat → navigate to Profile → fill in goals/experience/days → save → data persists in Azure SQL. Infra deployed and reachable.
+**Gate:** Can sign in with Google → lands on chat → navigate to Profile → fill in goals/experience/days → save → data persists in Azure PostgreSQL. Infra deployed and reachable.
+
+**Notes:** Terraform validated and fixed (auth module missing resource_group_name). Actual `terraform apply` deferred to manual deployment. Type mismatch between api.ts UserProfile and types/index.ts Profile flagged — to be aligned in Phase 2.
 
 ---
 
@@ -1165,7 +1179,7 @@ Personal AI gym trainer React Native app. Backend is Python FastAPI on Azure,
 AI agent uses Microsoft Agent Framework with Claude Sonnet, tools via MCP.
 
 ## Architecture
-- `infra/` — Terraform for Azure (SQL, Container Apps, AD B2C, Key Vault)
+- `infra/` — Terraform for Azure (PostgreSQL, Container Apps, AD B2C, Key Vault)
 - `backend/` — Python FastAPI + MCP tool server + Agent Framework
 - `mobile/` — React Native Expo (Android only)
 
@@ -1214,7 +1228,7 @@ fastapi>=0.115
 uvicorn[standard]>=0.34
 agent-framework-anthropic>=1.0.0rc1
 fastmcp>=0.5
-aioodbc>=0.5
+asyncpg>=0.30
 python-jose[cryptography]>=3.3      # JWT validation for AD B2C
 httpx>=0.27                          # YouTube API calls
 pydantic>=2.10
@@ -1443,7 +1457,7 @@ No need to manually manage `.jks` files or worry about losing signing keys.
 
 1. **Expo managed workflow + React Native Paper** — All required native modules have Expo config plugins. Paper provides Material Design 3 components that feel native on Android, with built-in theming, dark mode, and accessibility. Most stable component library for Claude Code agents to work with.
 
-2. **NVARCHAR(MAX) for JSON in Azure SQL** — Azure SQL doesn't have native JSONB like Postgres, but supports `JSON_VALUE()` and `OPENJSON()` functions for querying. Fine for our scale.
+2. **JSONB in Azure PostgreSQL** — Native JSONB type with rich operators (`->`, `->>`, `@>`) for querying JSON columns (plan_json, exercises, training_goals, tool_calls). Much cleaner than NVARCHAR workarounds. Uses `asyncpg` for fast async Python access.
 
 3. **LLM voice parsing via Haiku** — Fast (~200-400ms), cheap (~£0.005/day), and handles natural language ("same as last time but add 5", "drop set", "to failure") that regex can't.
 

@@ -1,0 +1,11 @@
+fastapi>=0.115
+uvicorn[standard]>=0.34
+agent-framework-anthropic>=1.0.0rc1
+fastmcp>=0.5
+asyncpg>=0.30
+python-jose[cryptography]>=3.3
+httpx>=0.27
+pydantic>=2.10
+pydantic-settings>=2.0
+pytest>=8.0
+pytest-asyncio>=0.24
