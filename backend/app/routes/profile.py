@@ -1,3 +1,5 @@
+import json
+import uuid
 from datetime import datetime
 
 import asyncpg
@@ -45,7 +47,7 @@ def _row_to_response(row: dict) -> ProfileResponse:
         id=str(row["id"]),
         display_name=row["display_name"],
         email=row["email"],
-        training_goals=row.get("training_goals"),
+        training_goals=json.loads(row["training_goals"]) if isinstance(row.get("training_goals"), str) else row.get("training_goals"),
         experience_level=row.get("experience_level"),
         available_days=row.get("available_days"),
         preferred_unit=row.get("preferred_unit", "kg"),
@@ -62,7 +64,7 @@ async def get_profile(
     row = await fetch_one(
         conn,
         "SELECT * FROM profiles WHERE id = $1",
-        user["user_id"],
+        uuid.UUID(user["user_id"]),
     )
     if not row:
         raise HTTPException(
@@ -86,7 +88,7 @@ async def update_profile(
     if body.training_goals is not None:
         idx += 1
         updates.append(f"training_goals = ${idx}")
-        values.append(body.training_goals)
+        values.append(json.dumps(body.training_goals))
 
     if body.experience_level is not None:
         idx += 1
@@ -115,14 +117,14 @@ async def update_profile(
     await execute(
         conn,
         f"UPDATE profiles SET {set_clause} WHERE id = $1",
-        user["user_id"],
+        uuid.UUID(user["user_id"]),
         *values,
     )
 
     row = await fetch_one(
         conn,
         "SELECT * FROM profiles WHERE id = $1",
-        user["user_id"],
+        uuid.UUID(user["user_id"]),
     )
     if not row:
         raise HTTPException(

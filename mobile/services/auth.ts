@@ -1,23 +1,26 @@
 import * as AuthSession from 'expo-auth-session';
 import * as SecureStore from 'expo-secure-store';
 
-// --- B2C Configuration ---
+// --- Dev Mode ---
 
-const TENANT_NAME = process.env.EXPO_PUBLIC_B2C_TENANT ?? 'gymtrainerb2c';
-const CLIENT_ID = process.env.EXPO_PUBLIC_B2C_CLIENT_ID ?? '';
-const POLICY_NAME = process.env.EXPO_PUBLIC_B2C_POLICY ?? 'B2C_1_signupsignin';
+const DEV_MODE = process.env.EXPO_PUBLIC_DEV_MODE === 'true';
 
-const B2C_BASE_URL = `https://${TENANT_NAME}.b2clogin.com/${TENANT_NAME}.onmicrosoft.com/${POLICY_NAME}`;
+// --- Entra External ID (CIAM) Configuration ---
+
+const TENANT_NAME = process.env.EXPO_PUBLIC_CIAM_TENANT ?? 'gymtrainerciam';
+const CLIENT_ID = process.env.EXPO_PUBLIC_CIAM_CLIENT_ID ?? '';
+
+const CIAM_BASE_URL = `https://${TENANT_NAME}.ciamlogin.com/${TENANT_NAME}.onmicrosoft.com`;
 
 const DISCOVERY: AuthSession.DiscoveryDocument = {
-  authorizationEndpoint: `${B2C_BASE_URL}/oauth2/v2.0/authorize`,
-  tokenEndpoint: `${B2C_BASE_URL}/oauth2/v2.0/token`,
-  endSessionEndpoint: `${B2C_BASE_URL}/oauth2/v2.0/logout`,
+  authorizationEndpoint: `${CIAM_BASE_URL}/oauth2/v2.0/authorize`,
+  tokenEndpoint: `${CIAM_BASE_URL}/oauth2/v2.0/token`,
+  endSessionEndpoint: `${CIAM_BASE_URL}/oauth2/v2.0/logout`,
 };
 
 const REDIRECT_URI = AuthSession.makeRedirectUri({ scheme: 'gymtrainer' });
 
-const SCOPES = ['openid', 'profile', 'offline_access', `https://${TENANT_NAME}.onmicrosoft.com/api/access`];
+const SCOPES = ['openid', 'profile', 'offline_access'];
 
 // --- Secure Store Keys ---
 
@@ -37,6 +40,18 @@ export interface AuthTokens {
 // --- Public Functions ---
 
 export async function signIn(): Promise<AuthTokens | null> {
+  if (DEV_MODE) {
+    console.warn('DEV_MODE: returning static dev token');
+    const tokens: AuthTokens = {
+      accessToken: 'dev-token',
+      refreshToken: null,
+      idToken: null,
+      expiresIn: 86400,
+    };
+    await storeTokens(tokens);
+    return tokens;
+  }
+
   const request = new AuthSession.AuthRequest({
     clientId: CLIENT_ID,
     scopes: SCOPES,
@@ -106,6 +121,10 @@ export async function refreshToken(currentRefreshToken: string): Promise<AuthTok
 }
 
 export async function getStoredToken(): Promise<string | null> {
+  if (DEV_MODE) {
+    return 'dev-token';
+  }
+
   const token = await SecureStore.getItemAsync(TOKEN_KEY);
   if (token && isTokenExpired(token)) {
     const stored = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
@@ -129,6 +148,8 @@ export async function storeTokens(tokens: AuthTokens): Promise<void> {
 }
 
 export function isTokenExpired(token: string): boolean {
+  if (DEV_MODE) return false;
+
   try {
     const parts = token.split('.');
     if (parts.length !== 3) return true;

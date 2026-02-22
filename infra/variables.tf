@@ -34,14 +34,28 @@ variable "deepgram_api_key" {
   sensitive   = true
 }
 
-variable "b2c_tenant_name" {
-  description = "Azure AD B2C tenant name (e.g. gymtrainerb2c)"
+variable "ciam_tenant_name" {
+  description = "Entra External ID (CIAM) tenant name (e.g. gymtrainerciam)"
   type        = string
+  default     = "gymtrainerciam"
 }
 
-variable "b2c_client_id" {
-  description = "Azure AD B2C application client ID"
+variable "ciam_display_name" {
+  description = "Display name for the CIAM tenant"
   type        = string
+  default     = "GymTrainer"
+}
+
+variable "ciam_location" {
+  description = "CIAM data residency location"
+  type        = string
+  default     = "europe"
+}
+
+variable "ciam_client_id" {
+  description = "CIAM application client ID (set after manual app registration)"
+  type        = string
+  default     = ""
 }
 
 variable "project_name" {

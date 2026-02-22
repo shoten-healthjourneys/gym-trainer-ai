@@ -1,0 +1,17 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: gymtrainer
+      POSTGRES_PASSWORD: gymtrainer_dev
+      POSTGRES_DB: gymtrainer
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/scripts/seed.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./infra/scripts/dev-seed.sql:/docker-entrypoint-initdb.d/02-dev-seed.sql
+
+volumes:
+  pgdata:

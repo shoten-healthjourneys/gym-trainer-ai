@@ -1,19 +1,19 @@
-output "b2c_tenant_name" {
-  description = "Azure AD B2C tenant name"
-  value       = var.b2c_tenant_name
+output "ciam_tenant_name" {
+  description = "Entra External ID (CIAM) tenant name"
+  value       = var.ciam_tenant_name
 }
 
-output "b2c_domain" {
-  description = "Azure AD B2C domain"
-  value       = "${var.b2c_tenant_name}.onmicrosoft.com"
+output "ciam_domain" {
+  description = "CIAM tenant domain"
+  value       = "${var.ciam_tenant_name}.onmicrosoft.com"
 }
 
-output "b2c_authority" {
-  description = "Azure AD B2C authority URL for sign-in policy"
-  value       = "https://${var.b2c_tenant_name}.b2clogin.com/${var.b2c_tenant_name}.onmicrosoft.com/B2C_1_signup_signin"
+output "ciam_authority" {
+  description = "CIAM authority URL for sign-in"
+  value       = "https://${var.ciam_tenant_name}.ciamlogin.com/"
 }
 
-output "b2c_client_id" {
-  description = "Azure AD B2C application client ID"
-  value       = var.b2c_client_id
+output "ciam_client_id" {
+  description = "CIAM application client ID"
+  value       = var.ciam_client_id
 }

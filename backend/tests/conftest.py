@@ -3,8 +3,8 @@ import os
 # Set dummy env vars BEFORE any app imports (Settings validates on import)
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
-os.environ.setdefault("B2C_TENANT_NAME", "testtenant")
-os.environ.setdefault("B2C_CLIENT_ID", "test-client-id")
+os.environ.setdefault("CIAM_TENANT_NAME", "testtenant")
+os.environ.setdefault("CIAM_CLIENT_ID", "test-client-id")
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -19,7 +19,7 @@ from app.db import get_db
 from app.routes.profile import router as profile_router
 
 TEST_USER = {
-    "user_id": "test-uuid",
+    "user_id": "00000000-0000-0000-0000-000000000099",
     "email": "test@example.com",
     "display_name": "Test User",
 }

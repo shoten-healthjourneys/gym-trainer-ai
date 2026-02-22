@@ -3,22 +3,30 @@ variable "resource_group_name" {
   type        = string
 }
 
-variable "b2c_tenant_name" {
-  description = "Azure AD B2C tenant name (e.g. gymtrainerb2c)"
+variable "subscription_id" {
+  description = "Azure subscription ID"
   type        = string
 }
 
-variable "b2c_client_id" {
-  description = "Azure AD B2C application client ID (set after manual app registration)"
+variable "ciam_tenant_name" {
+  description = "Entra External ID (CIAM) tenant name (e.g. gymtrainerciam)"
   type        = string
 }
 
-variable "location" {
-  description = "Azure region"
+variable "ciam_display_name" {
+  description = "Display name for the CIAM tenant"
   type        = string
+  default     = "GymTrainer"
 }
 
-variable "project_name" {
-  description = "Project name prefix for resources"
+variable "ciam_location" {
+  description = "CIAM data residency location (europe, unitedstates, asiapacific, australia, japan)"
   type        = string
+  default     = "europe"
+}
+
+variable "ciam_client_id" {
+  description = "CIAM application client ID (set after manual app registration in Portal)"
+  type        = string
+  default     = ""
 }

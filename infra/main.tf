@@ -4,6 +4,10 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 4.0"
     }
+    azapi = {
+      source  = "azure/azapi"
+      version = "~> 2.0"
+    }
     random = {
       source  = "hashicorp/random"
       version = "~> 3.6"
@@ -16,6 +20,8 @@ terraform {
 provider "azurerm" {
   features {}
 }
+
+provider "azapi" {}
 
 provider "random" {}
 
@@ -50,10 +56,11 @@ module "auth" {
   source = "./modules/auth"
 
   resource_group_name = azurerm_resource_group.rg.name
-  b2c_tenant_name     = var.b2c_tenant_name
-  b2c_client_id       = var.b2c_client_id
-  location            = azurerm_resource_group.rg.location
-  project_name        = var.project_name
+  subscription_id     = data.azurerm_client_config.current.subscription_id
+  ciam_tenant_name    = var.ciam_tenant_name
+  ciam_display_name   = var.ciam_display_name
+  ciam_location       = var.ciam_location
+  ciam_client_id      = var.ciam_client_id
 }
 
 module "keyvault" {
@@ -67,3 +74,5 @@ module "keyvault" {
   deepgram_api_key    = var.deepgram_api_key
   database_url        = module.postgresql.connection_string
 }
+
+data "azurerm_client_config" "current" {}
