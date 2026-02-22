@@ -1,0 +1,22 @@
+sequenceDiagram
+    participant U as User
+    participant App as React Native App
+    participant B2C as Azure AD B2C
+    participant Google as Google OAuth
+    participant API as FastAPI Backend
+    participant DB as Azure SQL
+
+    U->>App: Tap "Sign in with Google"
+    App->>B2C: Initiate OAuth flow
+    B2C->>Google: Redirect to Google consent
+    Google->>U: Show consent screen
+    U->>Google: Grant permission
+    Google->>B2C: Return auth code
+    B2C->>B2C: Exchange code for tokens
+    B2C->>App: Return ID token + access token
+    App->>API: POST /auth/register (ID token)
+    API->>DB: UPSERT profiles (user_id, display_name, email)
+    DB-->>API: OK
+    API-->>App: 200 + session info
+    App->>App: Store tokens in SecureStore
+    App->>U: Navigate to Chat (home)

@@ -1,0 +1,69 @@
+sequenceDiagram
+    title Journey 11: Re-plan / Adjust Schedule
+
+    actor User
+    participant App as Mobile App<br/>(Chat Screen)
+    participant SSE as SSE Stream
+    participant BE as FastAPI<br/>Backend
+    participant Agent as Agent Framework<br/>(Claude Sonnet)
+    participant MCP as MCP Tools
+    participant DB as Azure SQL
+
+    Note over User,DB: User wants to change an existing plan<br/>e.g. move a day, swap exercises, drop a session
+
+    User->>App: Type: "I can't train Thursday<br/>this week. Move it to Saturday<br/>and make Friday a rest day."
+
+    App->>SSE: POST /chat/stream<br/>{ message, user_id, session_id }
+    SSE->>BE: Open SSE connection
+    BE->>Agent: agent.run_stream(message)
+
+    Agent-->>SSE: TextReasoningContent:<br/>"Need to check current week's plan,<br/>find Thursday's session, reschedule to Saturday"
+    SSE-->>App: event: { type: "thinking" }
+    App->>App: Render ThinkingBlock
+
+    Agent->>MCP: get_user_profile(user_id)
+    MCP->>DB: SELECT * FROM profiles
+    DB-->>MCP: Profile data
+    MCP-->>Agent: Profile (goals, available days)
+
+    Agent-->>SSE: ToolCallContent: get_user_profile
+    SSE-->>App: event: { type: "tool_start" }
+    App->>App: Show "📋 Checking profile..."
+
+    Note over Agent: Agent checks existing schedule<br/>via exercise history to understand context
+
+    Agent->>MCP: get_exercise_history(user_id,<br/>"*", limit=20)
+    MCP->>DB: SELECT recent sessions<br/>with exercises for this week
+    DB-->>MCP: This week's sessions + logs
+    MCP-->>Agent: Current plan context
+
+    Agent-->>SSE: ToolCallContent: get_exercise_history
+    SSE-->>App: event: { type: "tool_start" }
+    App->>App: Show "📊 Reviewing schedule..."
+
+    Note over Agent: Agent restructures the plan:<br/>- Removes Thursday session<br/>- Creates Saturday session<br/>- Adjusts if needed for recovery
+
+    Agent->>MCP: save_workout_plan(user_id,<br/>week_start, updated_plan)
+    Note right of MCP: Updated plan JSON:<br/>- Mon: Push Day (unchanged)<br/>- Wed: Pull Day (unchanged)<br/>- Fri: Rest Day ← was Legs<br/>- Sat: Legs ← moved from Thu
+
+    MCP->>DB: BEGIN TRANSACTION
+    MCP->>DB: UPDATE workout_sessions<br/>SET status = 'cancelled'<br/>WHERE scheduled_date = Thu
+    MCP->>DB: INSERT INTO workout_sessions<br/>(Saturday session with exercises)
+    MCP->>DB: COMMIT
+    DB-->>MCP: Success
+    MCP-->>Agent: Plan saved
+
+    Agent-->>SSE: ToolCallContent: save_workout_plan
+    SSE-->>App: event: { type: "tool_start" }
+    App->>App: Show "💾 Updating schedule..."
+    SSE-->>App: event: { type: "tool_done" }
+    App->>App: Show "✓ Schedule updated"
+
+    Agent-->>SSE: TextContent (streamed):<br/>"Done! I've moved your Legs session<br/>from Thursday to Saturday and<br/>made Friday a rest day. Your week<br/>now looks like:<br/>Mon — Push | Wed — Pull | Sat — Legs<br/>This actually gives you better recovery<br/>between pull and legs. 💪"
+    SSE-->>App: event: { type: "text" } (tokens)
+    App->>App: StreamingText + PlanCard renders
+
+    SSE-->>App: event: { type: "done" }
+    App->>App: Finalize message
+
+    Note over User,App: Schedule tab now reflects<br/>the updated plan automatically<br/>(workoutStore refreshes on tab focus)

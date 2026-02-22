@@ -1,0 +1,46 @@
+# GymTrainer Project
+
+## Project Overview
+Personal AI gym trainer React Native app. Backend is Python FastAPI on Azure,
+AI agent uses Microsoft Agent Framework with Claude Sonnet, tools via MCP.
+
+## Implementation Plan
+Detailed implementation plan can be found here - Gym Trainer Implementation Plan.md
+
+## Architecture
+- Sequence diagrams can be found here - Architecture
+- `infra/` — Terraform for Azure (SQL, Container Apps, AD B2C, Key Vault)
+- `backend/` — Python FastAPI + MCP tool server + Agent Framework
+- `mobile/` — React Native Expo (Android only)
+
+## Conventions
+- TypeScript strict mode in mobile/
+- Python 3.12+ with type hints in backend/
+- All API responses use camelCase JSON
+- Exercise names are canonical: "Barbell Bench Press" not "bench"
+- Use Zustand for all React Native state
+- All dates in ISO 8601 UTC
+
+## File Ownership Rules
+- infra-agent: only touches files in `infra/`, `backend/Dockerfile`, `.github/`, and `mobile/eas.json`
+- backend-agent: only touches files in `backend/` (except Dockerfile)
+- frontend-chat-agent: owns `mobile/app/(tabs)/index.tsx`, `mobile/components/chat/`,
+  `mobile/services/api.ts`, `mobile/services/sse.ts`, `mobile/stores/chatStore.ts`,
+  `mobile/stores/authStore.ts`, `mobile/app/auth/`, `mobile/app/_layout.tsx`,
+  `mobile/theme.ts` (React Native Paper theme config)
+- frontend-workout-agent: owns `mobile/app/(tabs)/schedule.tsx`,
+  `mobile/app/(tabs)/workout/`, `mobile/app/(tabs)/progress.tsx`,
+  `mobile/app/(tabs)/profile.tsx`, `mobile/components/workout/`,
+  `mobile/components/progress/`, `mobile/services/voice.ts`,
+  `mobile/stores/workoutStore.ts`, `mobile/stores/profileStore.ts`,
+  `mobile/types/index.ts`
+
+## Shared interfaces (types/index.ts) — owned by frontend-workout-agent
+Other agents should coordinate via lead before modifying types.
+
+## Testing
+- Backend: pytest with httpx for route tests, MCP tool tests
+- Mobile unit: Jest for stores, services, parsing logic
+- Mobile component: React Native Testing Library for UI
+- TypeScript: strict mode, `tsc --noEmit` must pass
+- Lint: ESLint must pass

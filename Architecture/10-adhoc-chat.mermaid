@@ -1,0 +1,51 @@
+sequenceDiagram
+    title Journey 10: Ad-hoc Chat (Ask AI for Advice)
+
+    actor User
+    participant App as Mobile App<br/>(Chat Screen)
+    participant SSE as SSE Stream
+    participant BE as FastAPI<br/>Backend
+    participant Agent as Agent Framework<br/>(Claude Sonnet)
+    participant MCP as MCP Tools
+    participant DB as Azure SQL
+
+    Note over User,DB: User has a question outside of<br/>normal planning — e.g. injury, substitution, deload
+
+    User->>App: Type: "My shoulder hurts.<br/>Can you modify Wednesday's<br/>push day to avoid pressing?"
+
+    App->>SSE: POST /chat/stream<br/>{ message, user_id, session_id }
+    SSE->>BE: Open SSE connection
+    BE->>Agent: agent.run_stream(message)
+
+    Note over Agent: Agent reasons about the request
+
+    Agent-->>SSE: TextReasoningContent:<br/>"User has shoulder pain, need to check<br/>what's on Wednesday and find<br/>alternatives that avoid pressing"
+    SSE-->>App: event: { type: "thinking", text: "..." }
+    App->>App: Render ThinkingBlock (collapsed)
+
+    Agent->>MCP: get_exercise_history(user_id,<br/>"Bench Press", limit=5)
+    MCP->>DB: SELECT * FROM exercise_logs<br/>WHERE exercise_name = 'Bench Press'
+    DB-->>MCP: Recent bench press logs
+    MCP-->>Agent: History data
+
+    Agent-->>SSE: ToolCallContent: get_exercise_history
+    SSE-->>App: event: { type: "tool_start",<br/>name: "get_exercise_history" }
+    App->>App: Show "📊 Checking history..."
+
+    Agent-->>SSE: ToolResultContent
+    SSE-->>App: event: { type: "tool_done" }
+    App->>App: Show "✓ History loaded"
+
+    Note over Agent: Agent generates modified workout<br/>with pressing alternatives
+
+    Agent-->>SSE: TextContent (streamed tokens):<br/>"No problem — let's protect that shoulder.<br/>Here's a modified Wednesday push day<br/>that replaces barbell pressing with<br/>chest flyes and landmine press..."
+    SSE-->>App: event: { type: "text", text: "..." }<br/>(token by token)
+    App->>App: StreamingText renders progressively
+
+    Note over Agent: Agent does NOT save a plan here —<br/>advisory only unless user confirms
+
+    Agent-->>SSE: TextContent (continued):<br/>"Want me to update Wednesday's<br/>session with these changes?"
+    SSE-->>App: event: { type: "done" }
+    App->>App: Finalize message
+
+    Note over User,App: User confirms → triggers Journey 11<br/>(Re-plan) or just takes the advice

@@ -1,0 +1,83 @@
+sequenceDiagram
+    title Agent Team Orchestration — Journey-Based Phases
+
+    participant Lead as Lead Agent<br/>(Delegate Mode)
+    participant Infra as infra-agent
+    participant BE as backend-agent
+    participant FC as frontend-chat-agent
+    participant FW as frontend-workout-agent
+
+    Note over Lead,FW: FOUNDATION (Hours 0-4) — All agents parallel
+
+    Lead->>Infra: Spawn: Terraform modules, seed.sql, Dockerfile, CI/EAS
+    Lead->>BE: Spawn: FastAPI scaffold, auth middleware, profile routes
+    Lead->>FC: Spawn: Expo init, Paper theme, API service, auth service
+    Lead->>FW: Spawn: Type definitions, store skeletons
+
+    Infra-->>Lead: ✓ Terraform plans clean, CI pipeline ready
+    BE-->>Lead: ✓ /health serves, profile CRUD works
+    FC-->>Lead: ✓ App launches, tabs navigate, API client ready
+    FW-->>Lead: ✓ Types defined, stores initialised
+
+    Note over Lead: GATE: App launches, backend serves, DB schema deployed
+
+    Note over Lead,FW: PHASE 1: Onboarding — Journeys 1 & 2 (Hours 4-6)
+
+    Lead->>Infra: Spawn: terraform apply, integration test
+    Lead->>BE: Spawn: Profile route tests
+    Lead->>FC: Spawn: Login screen, auth store, auth-gated layout
+    Lead->>FW: Spawn: Profile screen (form + save), profile store
+
+    Infra-->>Lead: ✓ Infra deployed, API reachable
+    BE-->>Lead: ✓ Profile tests pass
+    FC-->>Lead: ✓ Google Sign-In works end-to-end
+    FW-->>Lead: ✓ Profile saves to Azure SQL
+
+    Note over Lead: GATE: Sign in → profile setup → data persists
+
+    Note over Lead,FW: PHASE 2: Planning — Journeys 3 & 4 (Hours 6-10)
+
+    Lead->>BE: Spawn: MCP tools, Agent Framework, SSE endpoint, session routes
+    Lead->>FC: Spawn: SSE consumer, chat screen, streaming components, PlanCard
+    Lead->>FW: Spawn: Schedule screen, workoutStore, YouTube WebView
+
+    BE-->>Lead: ✓ Chat streams, tools execute, sessions saved
+    FC-->>Lead: ✓ Streaming UI: thinking → tools → text → PlanCard
+    FW-->>Lead: ✓ Schedule shows sessions, YouTube links work
+
+    Note over Lead: GATE: "Plan my week" → AI responds → schedule populates
+
+    Note over Lead,FW: PHASE 3: Training — Journeys 5, 6, 7 & 8 (Hours 10-14)
+
+    Lead->>BE: Spawn: Voice parse endpoint (Haiku), exercise log routes, tests
+    Lead->>FC: Spawn: ChatInput, MessageBubble, chat history polish
+    Lead->>FW: Spawn: Active workout, VoiceButton, SetLogger, manual edit, completion
+
+    BE-->>Lead: ✓ Voice parses correctly, logs CRUD works
+    FC-->>Lead: ✓ Chat input polished, history scrolls
+    FW-->>Lead: ✓ Start → voice log → edit → complete works E2E
+
+    Note over Lead: GATE: Full workout session with voice logging works
+
+    Note over Lead,FW: PHASE 4: Tracking — Journeys 9, 10 & 11 (Hours 14-16)
+
+    Lead->>BE: Spawn: Exercise history route, comprehensive route tests
+    Lead->>FC: Spawn: Error handling, offline states
+    Lead->>FW: Spawn: Progress screen, WeightChart, HistoryTable, RestTimer
+
+    BE-->>Lead: ✓ All routes tested
+    FC-->>Lead: ✓ Error states handled gracefully
+    FW-->>Lead: ✓ Progress charts render, history table works
+
+    Note over Lead: GATE: Progress visible, ad-hoc chat works, re-plan works
+
+    Note over Lead,FW: PHASE 5: Polish — Journey 12 (Hours 16-18)
+
+    Lead->>FC: Spawn: Chat UX polish (auto-scroll, loading, retry)
+    Lead->>FW: Spawn: Empty states, workout index screen
+
+    FC-->>Lead: ✓ Chat polished
+    FW-->>Lead: ✓ Empty states guide user to chat
+
+    Lead->>Lead: Full Journey 12 walkthrough:<br/>Plan → Train → Log → Progress → Re-plan
+    Lead-->>Lead: ✓ Weekly loop works end-to-end

@@ -1,0 +1,38 @@
+sequenceDiagram
+    participant U as User
+    participant App as React Native App
+    participant STT as Android STT
+    participant DG as Deepgram (fallback)
+    participant API as FastAPI
+    participant Haiku as Claude Haiku
+    participant DB as Azure SQL
+
+    U->>App: Hold mic button
+    App->>STT: Start recognition
+
+    U->>STT: "Same weight ten reps"
+    STT-->>App: Transcript: "same weight ten reps"
+    App->>App: Release mic button
+
+    App->>API: POST /voice/parse
+    Note right of App: {transcript, exercise,<br/>previous_sets}
+
+    API->>Haiku: Messages API
+    Note over Haiku: System: gym set logger<br/>Context: exercise + previous sets
+    Haiku-->>API: {sets: [{weight_kg: 80, reps: 10}]}
+
+    API->>API: Validate JSON schema
+    API->>DB: INSERT INTO exercise_logs
+    DB-->>API: OK
+    API-->>App: 200 {parsed, set_number}
+
+    App->>App: Haptic feedback
+    App->>U: Show "Set 2: 80kg × 10 ✓"
+
+    Note over U,DG: Fallback path
+    U->>App: Hold mic (STT fails)
+    App->>DG: Deepgram WebSocket stream
+    U->>DG: Audio stream
+    DG-->>App: Transcript (boosted vocabulary)
+    App->>API: POST /voice/parse
+    Note over API: Same Haiku flow

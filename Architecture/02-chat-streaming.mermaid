@@ -1,0 +1,63 @@
+sequenceDiagram
+    participant U as User
+    participant App as React Native App
+    participant API as FastAPI (SSE)
+    participant AF as Agent Framework
+    participant Claude as Claude Sonnet
+    participant MCP as MCP Tool Server
+    participant DB as Azure SQL
+    participant YT as YouTube API
+
+    U->>App: "Plan my workouts for this week"
+    App->>API: POST /chat/stream {message, user_id}
+    API->>DB: Fetch chat history
+    DB-->>API: Previous messages
+
+    API->>AF: agent.run_stream(message, history)
+    AF->>Claude: Messages API (streaming)
+
+    Note over Claude: Reasoning begins
+    Claude-->>AF: TextReasoningContent
+    AF-->>API: Stream event
+    API-->>App: SSE: {type:thinking}
+    App->>U: Show thinking indicator
+
+    Claude->>AF: ToolUse: get_user_profile
+    AF->>MCP: Call get_user_profile
+    MCP->>DB: SELECT FROM profiles
+    DB-->>MCP: Profile data
+    MCP-->>AF: Result
+    API-->>App: SSE: {type:tool, name:get_user_profile}
+    App->>U: Show "✓ Loaded profile"
+
+    Claude->>AF: ToolUse: get_exercise_history
+    AF->>MCP: Call get_exercise_history
+    MCP->>DB: SELECT FROM exercise_logs
+    DB-->>MCP: History data
+    MCP-->>AF: Result
+    API-->>App: SSE: {type:tool, name:get_exercise_history}
+    App->>U: Show "✓ Retrieved history"
+
+    Claude->>AF: ToolUse: search_youtube
+    AF->>MCP: Call search_youtube
+    MCP->>YT: YouTube Data API
+    YT-->>MCP: Video URL
+    MCP-->>AF: Result
+    API-->>App: SSE: {type:tool, name:search_youtube}
+
+    Note over Claude: Generate plan tokens
+    Claude-->>AF: TextContent (streaming)
+    AF-->>API: Stream tokens
+    API-->>App: SSE: {type:text} (token by token)
+    App->>U: Render text streaming
+
+    Claude->>AF: ToolUse: save_workout_plan
+    AF->>MCP: Call save_workout_plan
+    MCP->>DB: INSERT plans + sessions
+    DB-->>MCP: OK
+    MCP-->>AF: Saved
+    API-->>App: SSE: {type:tool, name:save_workout_plan}
+
+    Claude-->>AF: Final text
+    API-->>App: SSE: {type:done}
+    App->>U: Complete message + Plan card

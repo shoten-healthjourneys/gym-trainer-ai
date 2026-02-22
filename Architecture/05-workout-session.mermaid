@@ -1,0 +1,33 @@
+sequenceDiagram
+    participant U as User
+    participant App as React Native App
+    participant API as FastAPI
+    participant DB as Azure SQL
+
+    U->>App: Navigate to Schedule tab
+    App->>API: GET /sessions?week_start=2026-02-23
+    API->>DB: SELECT FROM workout_sessions WHERE date BETWEEN
+    DB-->>API: Session list
+    API-->>App: [{id, title, date, exercises}]
+    App->>U: Show workout cards
+
+    U->>App: Tap "Push Day" card
+    App->>API: PATCH /sessions/s1 {status: in_progress}
+    API->>DB: UPDATE status, started_at
+    DB-->>API: OK
+    API-->>App: 200
+
+    App->>API: GET /exercises/last-best?names=[...]
+    API->>DB: SELECT exercise_name, MAX(weight_kg) GROUP BY
+    DB-->>API: Previous bests
+    API-->>App: [{exercise, best_weight, best_reps}]
+
+    App->>U: Active workout screen
+    Note over U,App: Voice logging flow<br/>(see Diagram 03)
+
+    U->>App: Tap "Complete Workout"
+    App->>API: PATCH /sessions/s1 {status: completed}
+    API->>DB: UPDATE status, completed_at
+    DB-->>API: OK
+    API-->>App: 200
+    App->>U: Completion summary

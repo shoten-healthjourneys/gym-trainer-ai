@@ -1,0 +1,22 @@
+sequenceDiagram
+    participant U as User
+    participant App as React Native App
+    participant API as FastAPI
+    participant DB as Azure SQL
+
+    U->>App: Navigate to Progress tab
+    App->>API: GET /exercises/names
+    API->>DB: SELECT DISTINCT exercise_name FROM exercise_logs
+    DB-->>API: Exercise names
+    API-->>App: ["Barbell Bench Press", "Squat", ...]
+    App->>U: Show exercise picker
+
+    U->>App: Select "Barbell Bench Press"
+    App->>API: GET /exercises/history?name=Barbell+Bench+Press&range=3months
+    API->>DB: SELECT weight_kg, reps, logged_at FROM exercise_logs
+    DB-->>API: Time-series data
+    API-->>App: [{date, weight_kg, reps}, ...]
+
+    App->>App: Render line chart
+    App->>App: Render history table
+    App->>U: Display progress view

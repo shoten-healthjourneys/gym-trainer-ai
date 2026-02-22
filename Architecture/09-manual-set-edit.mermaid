@@ -1,0 +1,41 @@
+sequenceDiagram
+    title Journey 7: Manual Set Edit
+
+    actor User
+    participant App as Mobile App<br/>(Active Workout)
+    participant Store as workoutStore<br/>(Zustand)
+    participant API as FastAPI<br/>Backend
+    participant DB as Azure SQL
+
+    Note over User,DB: User is in active workout screen.<br/>A set was logged (via voice or manual)<br/>but has incorrect data.
+
+    App->>App: Display logged sets:<br/>Set 1: 80kg × 8 ✓<br/>Set 2: 85kg × 3 ← (should be 6)<br/>Set 3: waiting...
+
+    User->>App: Tap on "Set 2: 85kg × 3"
+    App->>App: Open edit dialog (Paper Dialog)<br/>Pre-filled: weight=85, reps=3, rpe=null
+
+    User->>App: Change reps: 3 → 6
+    User->>App: Add RPE: 8
+    User->>App: Tap "Save"
+
+    App->>Store: updateSet(logId, { reps: 6, rpe: 8 })
+    Store->>API: PATCH /api/exercises/logs/{logId}
+    Note right of API: Request body:<br/>{ reps: 6, rpe: 8 }
+    API->>DB: UPDATE exercise_logs<br/>SET reps = 6, rpe = 8<br/>WHERE id = @logId<br/>AND user_id = @userId
+    DB-->>API: 1 row updated
+    API-->>Store: 200 OK { updated log }
+    Store-->>App: Update set display
+
+    App->>App: Display corrected:<br/>Set 1: 80kg × 8 ✓<br/>Set 2: 85kg × 6 (RPE 8) ✓<br/>Set 3: waiting...
+    App->>App: Haptic feedback (light)
+
+    Note over User,App: User can also delete a set
+
+    User->>App: Long-press on a set
+    App->>App: Show "Delete set?" confirmation
+    User->>App: Confirm delete
+    App->>Store: deleteSet(logId)
+    Store->>API: DELETE /api/exercises/logs/{logId}
+    API->>DB: DELETE FROM exercise_logs<br/>WHERE id = @logId AND user_id = @userId
+    DB-->>API: 200 OK
+    Store-->>App: Remove set from display

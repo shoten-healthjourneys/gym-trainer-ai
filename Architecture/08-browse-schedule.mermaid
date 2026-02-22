@@ -1,0 +1,44 @@
+sequenceDiagram
+    title Journey 4: Browse Schedule
+
+    actor User
+    participant App as Mobile App<br/>(Schedule Screen)
+    participant Store as workoutStore<br/>(Zustand)
+    participant API as FastAPI<br/>Backend
+    participant DB as Azure SQL
+    participant WV as WebView<br/>(YouTube)
+
+    User->>App: Tap Schedule tab
+    App->>Store: fetchWeekSessions(weekStart)
+    Store->>API: GET /api/sessions?week_start=2026-02-23
+    API->>DB: SELECT * FROM workout_sessions<br/>WHERE user_id = @userId<br/>AND scheduled_date BETWEEN @start AND @end<br/>ORDER BY scheduled_date ASC
+    DB-->>API: Array of sessions
+
+    Note right of API: Response:<br/>[{ id: 1, title: "Push Day",<br/>  scheduled_date: "2026-02-23",<br/>  status: "scheduled",<br/>  exercises: [<br/>    { name: "Bench Press",<br/>      sets: 4, reps: "6-8",<br/>      youtube_url: "https://..." },<br/>    { name: "OHP",<br/>      sets: 3, reps: "8-10",<br/>      youtube_url: "https://..." }<br/>  ] }, ...]
+
+    API-->>Store: Sessions array
+    Store-->>App: Render week view
+
+    App->>App: Render workout cards:<br/>Mon — Push Day (4 exercises)<br/>Wed — Pull Day (5 exercises)<br/>Fri — Legs (4 exercises)<br/>Sat — Upper (5 exercises)
+
+    Note over User,App: User explores a workout card
+
+    User->>App: Tap "Push Day" card
+    App->>App: Expand card → show exercises<br/>with sets × reps and YouTube links
+
+    User->>App: Tap YouTube link<br/>on "Bench Press"
+    App->>WV: Open YouTube URL<br/>in in-app WebView
+    WV-->>User: Video plays<br/>(exercise demo)
+    User->>App: Close WebView
+
+    Note over User,App: User can swipe between weeks
+
+    User->>App: Swipe left (next week)
+    App->>Store: fetchWeekSessions(nextWeekStart)
+    Store->>API: GET /api/sessions?week_start=2026-03-02
+    API->>DB: SELECT ... (next week)
+    DB-->>API: Sessions (may be empty)
+    API-->>Store: Sessions array
+    Store-->>App: Render next week<br/>(or "No plan yet" prompt)
+
+    Note over User,App: From schedule, user can<br/>start a workout (→ Journey 5)
