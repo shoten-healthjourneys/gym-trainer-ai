@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { StyleSheet, View, KeyboardAvoidingView, Platform } from 'react-native';
-import { Button, Snackbar, Text, TextInput, useTheme } from 'react-native-paper';
+import { Snackbar, Text } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { colors, spacing } from '../../theme';
+import { Button, TextInput } from '../../components/ui';
 import { useAuthStore } from '../../stores/authStore';
 
 export default function LoginScreen() {
-  const theme = useTheme();
   const { isLoading, error, login, register, clearError } = useAuthStore();
 
   const [email, setEmail] = useState('');
@@ -26,7 +27,7 @@ export default function LoginScreen() {
   const canSubmit = email.length > 0 && password.length >= 6 && (!isRegisterMode || displayName.length > 0);
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
         style={styles.keyboardView}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -36,12 +37,12 @@ export default function LoginScreen() {
             <MaterialCommunityIcons
               name="dumbbell"
               size={64}
-              color={theme.colors.secondary}
+              color={colors.accent}
             />
-            <Text variant="displaySmall" style={[styles.title, { color: theme.colors.onBackground }]}>
+            <Text variant="displaySmall" style={styles.title}>
               GymTrainer
             </Text>
-            <Text variant="bodyLarge" style={[styles.tagline, { color: theme.colors.onSurfaceVariant }]}>
+            <Text variant="bodyLarge" style={styles.tagline}>
               Your AI-powered personal trainer
             </Text>
           </View>
@@ -54,7 +55,6 @@ export default function LoginScreen() {
                 onChangeText={setDisplayName}
                 autoCapitalize="words"
                 style={styles.input}
-                mode="outlined"
               />
             )}
             <TextInput
@@ -65,7 +65,6 @@ export default function LoginScreen() {
               autoCapitalize="none"
               autoComplete="email"
               style={styles.input}
-              mode="outlined"
             />
             <TextInput
               label="Password"
@@ -74,7 +73,6 @@ export default function LoginScreen() {
               secureTextEntry={!showPassword}
               autoCapitalize="none"
               style={styles.input}
-              mode="outlined"
               right={
                 <TextInput.Icon
                   icon={showPassword ? 'eye-off' : 'eye'}
@@ -84,19 +82,17 @@ export default function LoginScreen() {
             />
 
             <Button
-              mode="contained"
+              variant="primary"
               onPress={handleSubmit}
               loading={isLoading}
               disabled={isLoading || !canSubmit}
-              contentStyle={styles.buttonContent}
               style={styles.button}
-              buttonColor={theme.colors.secondary}
             >
               {isRegisterMode ? 'Create Account' : 'Sign In'}
             </Button>
 
             <Button
-              mode="text"
+              variant="ghost"
               onPress={() => {
                 setIsRegisterMode(!isRegisterMode);
                 clearError();
@@ -124,6 +120,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: colors.background,
   },
   keyboardView: {
     flex: 1,
@@ -131,34 +128,31 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     justifyContent: 'center',
-    paddingHorizontal: 32,
+    paddingHorizontal: spacing.xl,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 48,
+    marginBottom: spacing.xxl,
   },
   title: {
-    fontWeight: 'bold',
-    marginTop: 16,
+    color: colors.textPrimary,
+    marginTop: spacing.base,
   },
   tagline: {
-    marginTop: 8,
+    marginTop: spacing.sm,
     textAlign: 'center',
+    color: colors.textSecondary,
   },
   form: {
     width: '100%',
   },
   input: {
-    marginBottom: 12,
-  },
-  buttonContent: {
-    height: 48,
+    marginBottom: spacing.md,
   },
   button: {
-    borderRadius: 24,
-    marginTop: 8,
+    marginTop: spacing.sm,
   },
   switchButton: {
-    marginTop: 12,
+    marginTop: spacing.md,
   },
 });

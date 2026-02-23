@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Snackbar, Text, ActivityIndicator } from 'react-native-paper';
+import { colors, spacing } from '../../theme';
 import {
   Button,
   Chip,
-  Snackbar,
+  ScreenContainer,
+  Section,
   SegmentedButtons,
-  Text,
-  useTheme,
-  ActivityIndicator,
-} from 'react-native-paper';
-import type { MD3Theme } from 'react-native-paper';
+} from '../../components/ui';
 import { useProfileStore } from '../../stores/profileStore';
 import type { ExperienceLevel, TrainingGoal } from '../../types';
 
@@ -35,7 +34,6 @@ const UNIT_OPTIONS: { label: string; value: 'kg' | 'lbs' }[] = [
 ];
 
 export default function ProfileScreen() {
-  const theme = useTheme<MD3Theme>();
   const {
     profile,
     loading,
@@ -107,157 +105,89 @@ export default function ProfileScreen() {
 
   if (loading && !profile && !saving) {
     return (
-      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
-        <ActivityIndicator size="large" />
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
 
   return (
-    <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-      >
-        {isFirstSetup ? (
-          <View style={styles.header}>
-            <Text variant="headlineMedium" style={{ color: theme.colors.onBackground }}>
-              Set up your training profile
-            </Text>
-            <Text
-              variant="bodyMedium"
-              style={[styles.subtitle, { color: theme.colors.onSurfaceVariant }]}
+    <ScreenContainer scroll>
+      {isFirstSetup ? (
+        <View style={styles.header}>
+          <Text variant="headlineMedium" style={styles.headingText}>
+            Set up your training profile
+          </Text>
+          <Text variant="bodyMedium" style={styles.subtitleText}>
+            Tell your AI trainer about your goals so it can plan the perfect workouts for
+            you.
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.header}>
+          <Text variant="headlineMedium" style={styles.headingText}>
+            Your Profile
+          </Text>
+        </View>
+      )}
+
+      <Section title="Training Goals">
+        <View style={styles.chipRow}>
+          {TRAINING_GOALS.map(({ label, value }) => (
+            <Chip
+              key={value}
+              selected={selectedGoals.includes(value)}
+              onPress={() => toggleGoal(value)}
             >
-              Tell your AI trainer about your goals so it can plan the perfect workouts for
-              you.
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.header}>
-            <Text variant="headlineMedium" style={{ color: theme.colors.onBackground }}>
-              Your Profile
-            </Text>
-          </View>
-        )}
-
-        {/* Training Goals */}
-        <View style={styles.section}>
-          <Text variant="titleMedium" style={{ color: theme.colors.onBackground }}>
-            Training Goals
-          </Text>
-          <View style={styles.chipRow}>
-            {TRAINING_GOALS.map(({ label, value }) => {
-              const selected = selectedGoals.includes(value);
-              return (
-                <Chip
-                  key={value}
-                  selected={selected}
-                  onPress={() => toggleGoal(value)}
-                  style={[
-                    styles.chip,
-                    {
-                      backgroundColor: selected
-                        ? theme.colors.secondaryContainer
-                        : theme.colors.surface,
-                    },
-                  ]}
-                  textStyle={{
-                    color: selected
-                      ? theme.colors.onSecondaryContainer
-                      : theme.colors.onSurface,
-                  }}
-                  showSelectedCheck={false}
-                >
-                  {label}
-                </Chip>
-              );
-            })}
-          </View>
+              {label}
+            </Chip>
+          ))}
         </View>
+      </Section>
 
-        {/* Experience Level */}
-        <View style={styles.section}>
-          <Text variant="titleMedium" style={{ color: theme.colors.onBackground }}>
-            Experience Level
-          </Text>
-          <SegmentedButtons
-            value={experienceLevel}
-            onValueChange={(val) => setExperienceLevel(val as ExperienceLevel)}
-            buttons={EXPERIENCE_LEVELS}
-            style={styles.segmented}
-          />
+      <Section title="Experience Level">
+        <SegmentedButtons
+          value={experienceLevel}
+          onValueChange={(val) => setExperienceLevel(val as ExperienceLevel)}
+          buttons={EXPERIENCE_LEVELS}
+        />
+      </Section>
+
+      <Section
+        title="Available Training Days"
+        subtitle={`${selectedDays.filter(Boolean).length} days selected`}
+      >
+        <View style={styles.chipRow}>
+          {DAYS.map((day, index) => (
+            <Chip
+              key={day}
+              selected={selectedDays[index]}
+              onPress={() => toggleDay(index)}
+            >
+              {day}
+            </Chip>
+          ))}
         </View>
+      </Section>
 
-        {/* Available Training Days */}
-        <View style={styles.section}>
-          <Text variant="titleMedium" style={{ color: theme.colors.onBackground }}>
-            Available Training Days
-          </Text>
-          <Text
-            variant="bodySmall"
-            style={{ color: theme.colors.onSurfaceVariant, marginBottom: 8 }}
-          >
-            {selectedDays.filter(Boolean).length} days selected
-          </Text>
-          <View style={styles.chipRow}>
-            {DAYS.map((day, index) => {
-              const selected = selectedDays[index];
-              return (
-                <Chip
-                  key={day}
-                  selected={selected}
-                  onPress={() => toggleDay(index)}
-                  style={[
-                    styles.dayChip,
-                    {
-                      backgroundColor: selected
-                        ? theme.colors.secondaryContainer
-                        : theme.colors.surface,
-                    },
-                  ]}
-                  textStyle={{
-                    color: selected
-                      ? theme.colors.onSecondaryContainer
-                      : theme.colors.onSurface,
-                  }}
-                  showSelectedCheck={false}
-                >
-                  {day}
-                </Chip>
-              );
-            })}
-          </View>
-        </View>
+      <Section title="Preferred Unit">
+        <SegmentedButtons
+          value={preferredUnit}
+          onValueChange={(val) => setPreferredUnit(val as 'kg' | 'lbs')}
+          buttons={UNIT_OPTIONS}
+        />
+      </Section>
 
-        {/* Preferred Unit */}
-        <View style={styles.section}>
-          <Text variant="titleMedium" style={{ color: theme.colors.onBackground }}>
-            Preferred Unit
-          </Text>
-          <SegmentedButtons
-            value={preferredUnit}
-            onValueChange={(val) => setPreferredUnit(val as 'kg' | 'lbs')}
-            buttons={UNIT_OPTIONS}
-            style={styles.segmented}
-          />
-        </View>
+      <Button
+        variant="primary"
+        onPress={handleSave}
+        loading={saving}
+        disabled={!canSave || saving}
+        style={styles.saveButton}
+      >
+        {isFirstSetup ? 'Get Started' : 'Save Profile'}
+      </Button>
 
-        {/* Save Button */}
-        <Button
-          mode="contained"
-          onPress={handleSave}
-          loading={saving}
-          disabled={!canSave || saving}
-          style={styles.saveButton}
-          buttonColor={theme.colors.secondary}
-          textColor={theme.colors.onSecondary}
-        >
-          {isFirstSetup ? 'Get Started' : 'Save Profile'}
-        </Button>
-      </ScrollView>
-
-      {/* Success Snackbar */}
       <Snackbar
         visible={successVisible}
         onDismiss={() => setSuccessVisible(false)}
@@ -266,7 +196,6 @@ export default function ProfileScreen() {
         Profile saved!
       </Snackbar>
 
-      {/* Error Snackbar */}
       <Snackbar
         visible={!!error}
         onDismiss={clearError}
@@ -275,51 +204,33 @@ export default function ProfileScreen() {
       >
         {error ?? ''}
       </Snackbar>
-    </View>
+    </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-  },
-  scroll: {
-    flex: 1,
-  },
-  content: {
-    padding: 24,
-    paddingBottom: 48,
-  },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: colors.background,
   },
   header: {
-    marginBottom: 24,
+    marginBottom: spacing.lg,
   },
-  subtitle: {
-    marginTop: 8,
+  headingText: {
+    color: colors.textPrimary,
   },
-  section: {
-    marginBottom: 24,
+  subtitleText: {
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
   },
   chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 12,
-  },
-  chip: {
-    marginBottom: 4,
-  },
-  dayChip: {
-    marginBottom: 4,
-  },
-  segmented: {
-    marginTop: 12,
+    gap: spacing.sm,
   },
   saveButton: {
-    marginTop: 8,
+    marginTop: spacing.sm,
   },
 });
