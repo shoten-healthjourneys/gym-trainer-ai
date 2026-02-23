@@ -93,12 +93,32 @@ export async function getStoredToken(): Promise<string | null> {
   return token;
 }
 
+function base64Decode(str: string): string {
+  // atob() doesn't exist in React Native — use a manual decoder
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+  let output = '';
+  // Normalise base64url to standard base64
+  let input = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (input.length % 4) input += '=';
+  for (let i = 0; i < input.length; i += 4) {
+    const a = chars.indexOf(input[i]!);
+    const b = chars.indexOf(input[i + 1]!);
+    const c = chars.indexOf(input[i + 2]!);
+    const d = chars.indexOf(input[i + 3]!);
+    const bits = (a << 18) | (b << 12) | (c << 6) | d;
+    output += String.fromCharCode((bits >> 16) & 0xff);
+    if (input[i + 2] !== '=') output += String.fromCharCode((bits >> 8) & 0xff);
+    if (input[i + 3] !== '=') output += String.fromCharCode(bits & 0xff);
+  }
+  return output;
+}
+
 export function isTokenExpired(token: string): boolean {
   try {
     const parts = token.split('.');
     if (parts.length !== 3) return true;
 
-    const payload = JSON.parse(atob(parts[1]!)) as { exp?: number };
+    const payload = JSON.parse(base64Decode(parts[1]!)) as { exp?: number };
     if (!payload.exp) return true;
 
     const nowSeconds = Math.floor(Date.now() / 1000);

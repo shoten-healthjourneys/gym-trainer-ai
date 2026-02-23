@@ -1,3 +1,4 @@
+import logging
 import uuid
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
@@ -6,9 +7,15 @@ import asyncpg
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+
 from app.config import settings
+import app._otel_patch  # noqa: F401 — must run before any agent_framework import
+from app.agent import create_agent
 from app.routes.auth import router as auth_router
+from app.routes.chat import router as chat_router
 from app.routes.profile import router as profile_router
+from app.routes.sessions import router as sessions_router
 
 
 _SCHEMA_SQL = """
@@ -28,6 +35,7 @@ CREATE TABLE IF NOT EXISTS workout_plans (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES profiles(id),
     week_start DATE NOT NULL,
+    UNIQUE(user_id, week_start),
     plan_json JSONB NOT NULL,
     notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -93,7 +101,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 4,
                 "kg",
             )
+    agent, mcp_tool = await create_agent()
+    app.state.agent = agent
+    app.state.mcp_tool = mcp_tool
     yield
+    await app.state.mcp_tool.close()
     await app.state.pool.close()
 
 
@@ -109,6 +121,8 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(profile_router)
+app.include_router(chat_router)
+app.include_router(sessions_router)
 
 
 @app.get("/health")

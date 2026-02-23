@@ -10,6 +10,7 @@ import {
   SegmentedButtons,
 } from '../../components/ui';
 import { useProfileStore } from '../../stores/profileStore';
+import { useAuthStore } from '../../stores/authStore';
 import type { ExperienceLevel, TrainingGoal } from '../../types';
 
 const TRAINING_GOALS: { label: string; value: TrainingGoal }[] = [
@@ -188,6 +189,16 @@ export default function ProfileScreen() {
         {isFirstSetup ? 'Get Started' : 'Save Profile'}
       </Button>
 
+      <Button
+        variant="ghost"
+        onPress={() => {
+          useAuthStore.getState().signOut();
+        }}
+        style={styles.signOutButton}
+      >
+        Sign Out
+      </Button>
+
       <Snackbar
         visible={successVisible}
         onDismiss={() => setSuccessVisible(false)}
@@ -232,5 +243,8 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     marginTop: spacing.sm,
+  },
+  signOutButton: {
+    marginTop: spacing.xxl,
   },
 });
