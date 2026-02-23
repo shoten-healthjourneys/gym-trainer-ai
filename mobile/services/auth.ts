@@ -1,4 +1,29 @@
+import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+
+// expo-secure-store is native-only; fall back to localStorage on web
+const storage = {
+  async getItem(key: string): Promise<string | null> {
+    if (Platform.OS === 'web') {
+      return localStorage.getItem(key);
+    }
+    return SecureStore.getItemAsync(key);
+  },
+  async setItem(key: string, value: string): Promise<void> {
+    if (Platform.OS === 'web') {
+      localStorage.setItem(key, value);
+      return;
+    }
+    await SecureStore.setItemAsync(key, value);
+  },
+  async deleteItem(key: string): Promise<void> {
+    if (Platform.OS === 'web') {
+      localStorage.removeItem(key);
+      return;
+    }
+    await SecureStore.deleteItemAsync(key);
+  },
+};
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000';
 
@@ -30,7 +55,7 @@ export async function login(email: string, password: string): Promise<AuthResult
   }
 
   const data = (await resp.json()) as AuthResult;
-  await SecureStore.setItemAsync(TOKEN_KEY, data.accessToken);
+  await storage.setItem(TOKEN_KEY, data.accessToken);
   return data;
 }
 
@@ -51,18 +76,18 @@ export async function register(
   }
 
   const data = (await resp.json()) as AuthResult;
-  await SecureStore.setItemAsync(TOKEN_KEY, data.accessToken);
+  await storage.setItem(TOKEN_KEY, data.accessToken);
   return data;
 }
 
 export async function signOut(): Promise<void> {
-  await SecureStore.deleteItemAsync(TOKEN_KEY);
+  await storage.deleteItem(TOKEN_KEY);
 }
 
 export async function getStoredToken(): Promise<string | null> {
-  const token = await SecureStore.getItemAsync(TOKEN_KEY);
+  const token = await storage.getItem(TOKEN_KEY);
   if (token && isTokenExpired(token)) {
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
+    await storage.deleteItem(TOKEN_KEY);
     return null;
   }
   return token;

@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { theme } from '../../theme';
+import { colors } from '../../theme';
 
 function TabIcon({ name, color, size }: { name: string; color: string; size: number }) {
   return <MaterialCommunityIcons name={name as any} color={color} size={size} />;
@@ -12,12 +12,12 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: theme.colors.surface,
-          borderTopColor: theme.colors.outlineVariant,
+          backgroundColor: colors.surface,
+          borderTopColor: colors.borderSubtle,
           borderTopWidth: 0.5,
         },
-        tabBarActiveTintColor: theme.colors.secondary,
-        tabBarInactiveTintColor: theme.colors.onSurfaceVariant,
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.textMuted,
       }}
     >
       <Tabs.Screen

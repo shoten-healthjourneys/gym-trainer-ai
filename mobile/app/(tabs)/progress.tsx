@@ -1,19 +1,22 @@
-import { View, StyleSheet } from 'react-native';
 import { Text } from 'react-native-paper';
+import { StyleSheet } from 'react-native';
+import { ScreenContainer } from '../../components/ui';
+import { colors } from '../../theme';
 
 export default function ProgressScreen() {
   return (
-    <View style={styles.container}>
-      <Text variant="headlineMedium">Progress</Text>
-      <Text variant="bodyMedium">Coming soon...</Text>
-    </View>
+    <ScreenContainer>
+      <Text variant="headlineMedium" style={styles.heading}>Progress</Text>
+      <Text variant="bodyMedium" style={styles.body}>Coming soon...</Text>
+    </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+  heading: {
+    color: colors.textPrimary,
+  },
+  body: {
+    color: colors.textSecondary,
   },
 });
