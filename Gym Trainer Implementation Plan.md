@@ -19,7 +19,7 @@ A personal AI-powered gym trainer app for Android. Chat with a Claude-powered ag
 | **Backend Runtime** | Python (FastAPI) on Azure Container Apps |
 | **Database** | Azure PostgreSQL Flexible Server |
 | **Auth** | Email/password with bcrypt + HS256 JWT (backend-issued) |
-| **Voice (primary)** | Android native STT (`@react-native-voice/voice`) |
+| **Voice (primary)** | Android native STT (TBD — `@react-native-voice/voice` removed due to AndroidX conflicts) |
 | **Voice (fallback)** | Deepgram streaming API |
 | **Design System** | React Native Paper (Material Design 3) |
 | **Charts** | `react-native-chart-kit` or `victory-native` |
@@ -1071,7 +1071,145 @@ Implementation is structured as **Foundation + 5 Journey Phases**. Foundation bu
 
 **Gate:** Can register or login with email/password → lands on chat → navigate to Profile → fill in goals/experience/days → save → data persists in Azure PostgreSQL. Infra deployed and reachable.
 
-**Notes:** Terraform validated and fixed (auth module commented out — not needed for email/password MVP). Actual `terraform apply` deferred to manual deployment. Type mismatch between api.ts UserProfile and types/index.ts Profile flagged — to be aligned in Phase 2.
+**Notes:** Terraform validated and fixed (auth module commented out — not needed for email/password MVP). Type mismatch between api.ts UserProfile and types/index.ts Profile flagged — to be aligned in Phase 2.
+
+---
+
+#### Phase 1.5: Azure Deployment & Mobile Build (Post-Phase 1) — ✅ COMPLETED
+
+**Goal:** Deploy backend to Azure, build standalone APK via EAS, test end-to-end on real phone.
+
+**Status as of 2026-02-23:**
+
+##### Azure Infrastructure — ✅ DEPLOYED & WORKING
+
+All infrastructure provisioned via Terraform and verified:
+
+| Resource | Status | Details |
+|---|---|---|
+| Resource Group (`gym-trainer-rg`) | ✅ Live | uksouth |
+| PostgreSQL Flexible Server (`gym-trainer-pg`) | ✅ Live | B1ms, PostgreSQL 16, 32GB |
+| PostgreSQL Database (`gym-trainer-db`) | ✅ Live | Schema auto-created by backend on startup |
+| Container Registry (`gymtraineracr`) | ✅ Live | Basic SKU |
+| Container App Environment | ✅ Live | Log Analytics integrated |
+| Container App (`gym-trainer-api`) | ✅ Live | 0.25 CPU, 0.5Gi RAM |
+| CIAM Tenant | ❌ Deleted | Was created then deleted — not needed for email/password auth |
+| Key Vault | ⏸ Not deployed | Module commented out — secrets passed as Container App env vars for now |
+
+**API URL:** `https://gym-trainer-api.bluehill-f327b734.uksouth.azurecontainerapps.io`
+- `GET /health` → `{"status":"ok"}` ✅
+- `POST /auth/login` → Returns JWT ✅ (tested with seeded user shotend@gmail.com)
+
+##### Backend Deployment — ✅ WORKING
+
+- Docker image built with `--platform linux/amd64` (required for Azure — Apple Silicon builds ARM by default)
+- Image pushed to ACR: `gymtraineracr.azurecr.io/gym-trainer-api:latest`
+- Auto-migration: `backend/app/main.py` lifespan creates all tables via `CREATE TABLE IF NOT EXISTS` on startup (workaround for inability to connect to Azure PG from local machine — port 5432 blocked by ISP)
+- Dev user seeded automatically: `shotend@gmail.com` / `Sosho144@`
+
+##### Terraform Fixes Applied
+
+1. **PostgreSQL zone drift**: Azure auto-assigned zone "3", Terraform tried to remove it → Added `lifecycle { ignore_changes = [zone] }` to postgresql module
+2. **Database URL encoding**: Password `GymTr@1n3r-Pr0d-2026!` contains `@` which broke asyncpg URL parsing → Used `urlencode()` in Terraform output
+3. **Container App image not found**: Image wasn't pushed to ACR yet → Logged into ACR, tagged and pushed
+4. **Container App failed provisioning state**: Previous failed apply created broken resource → Deleted via `az containerapp delete`, re-applied
+5. **Docker platform mismatch**: ARM image on Apple Silicon → Rebuilt with `--platform linux/amd64`
+
+##### EAS Build — ✅ SUCCEEDED (Build #6)
+
+Multiple build failures resolved iteratively:
+
+| Build | Error | Fix Applied |
+|---|---|---|
+| #1 | `expo-modules-core:compileReleaseKotlin FAILED` — Compose Compiler requires Kotlin 1.9.25 but using 1.9.24 | Added `expo-build-properties` plugin with `kotlinVersion: "1.9.25"` |
+| #2 | Same Kotlin error | `npx expo install --fix` to update react-native 0.76.5→0.76.9, removed stale android/ folder |
+| #3 | `processReleaseMainManifest FAILED` — AndroidX vs android.support manifest conflict | Added `enableJetifier: true` to expo-build-properties |
+| #4 | Same manifest error persisted | Set `newArchEnabled: false` in app.json |
+| #5 | Same manifest error — `com.android.support:support-compat:28.0.0` conflicting with `androidx.core:core:1.13.1` | **Removed `@react-native-voice/voice`** (sole source of old support libs, not imported anywhere). Also replaced `react-native-vector-icons` → `@expo/vector-icons` (bundled with Expo, no native compilation). Also attempted config plugin `withAndroidManifestFix` but it failed to resolve `@expo/config-plugins` from global EAS CLI — removed it. |
+| #6 | ✅ **BUILD SUCCEEDED** | All fixes combined resolved the issue. APK ready for download. |
+
+##### Current app.json (EAS build config)
+
+```json
+{
+  "expo": {
+    "newArchEnabled": false,
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      ["expo-build-properties", {
+        "android": {
+          "kotlinVersion": "1.9.25",
+          "enableJetifier": true
+        }
+      }]
+    ]
+  }
+}
+```
+
+##### Packages Removed (build compatibility)
+
+- `@react-native-voice/voice` — pulled in `com.android.support:*:28.0.0` causing AndroidX manifest merger failures. Not imported anywhere in code. Voice STT will need a replacement package when Phase 3 (voice logging) is implemented.
+- `react-native-vector-icons` — replaced with `@expo/vector-icons` (bundled with Expo, zero native build overhead). Two files updated:
+  - `mobile/app/auth/login.tsx` — `import { MaterialCommunityIcons } from '@expo/vector-icons'`
+  - `mobile/app/(tabs)/_layout.tsx` — same
+
+- `expo-auth-session` — leftover from original OAuth approach, removed
+
+##### Environment Files
+
+**`mobile/.env`:**
+```
+EXPO_PUBLIC_API_URL=https://gym-trainer-api.bluehill-f327b734.uksouth.azurecontainerapps.io
+EXPO_PUBLIC_DEV_EMAIL=shotend@gmail.com
+EXPO_PUBLIC_DEV_PASSWORD=Sosho144@
+```
+
+**`mobile/eas.json` preview profile** bakes in the Azure API URL:
+```json
+"preview": {
+  "distribution": "internal",
+  "android": { "buildType": "apk" },
+  "env": {
+    "EXPO_PUBLIC_API_URL": "https://gym-trainer-api.bluehill-f327b734.uksouth.azurecontainerapps.io"
+  }
+}
+```
+
+**`backend/.env`** contains Azure PG credentials (PG_HOST, PG_USER, PG_PASSWORD, PG_DB) + JWT_SECRET.
+
+##### What the Next Session Needs To Do
+
+1. **Test the APK on phone** — EAS build #6 succeeded, download and install the preview APK
+2. **Test the full auth flow on phone:**
+   - Open app → Login screen
+   - Sign in with `shotend@gmail.com` / `Sosho144@`
+   - Navigate to Profile → fill in training preferences → Save
+   - Verify data persists (sign out and back in)
+3. **Then proceed to Phase 2** (Workout Planning — chat with AI agent)
+
+##### Commands for Redeployment (if backend changes needed)
+
+```bash
+# Rebuild and push Docker image (from project root)
+cd backend
+docker build --platform linux/amd64 -t gymtraineracr.azurecr.io/gym-trainer-api:latest .
+az acr login --name gymtraineracr
+docker push gymtraineracr.azurecr.io/gym-trainer-api:latest
+
+# Restart container app to pick up new image
+az containerapp revision restart --name gym-trainer-api --resource-group gym-trainer-rg --revision $(az containerapp revision list --name gym-trainer-api --resource-group gym-trainer-rg --query '[0].name' -o tsv)
+
+# Or create new revision
+az containerapp update --name gym-trainer-api --resource-group gym-trainer-rg --image gymtraineracr.azurecr.io/gym-trainer-api:latest
+```
+
+```bash
+# EAS build command
+cd mobile
+eas build --profile preview --platform android
+```
 
 ---
 
@@ -1249,9 +1387,10 @@ pydantic>=2.10
     "expo": "~52.x",
     "expo-router": "~4.x",
     "expo-secure-store": "*",
+    "expo-build-properties": "~0.13.x",  // kotlinVersion + enableJetifier for Android builds
     "react-native-paper": "^5.x",
     "react-native-safe-area-context": "*",
-    "@react-native-voice/voice": "^3.x",
+    "@expo/vector-icons": "*",          // replaces react-native-vector-icons
     "zustand": "^4.x",
     "react-native-chart-kit": "^6.x",
     "react-native-webview": "*",
@@ -1284,7 +1423,7 @@ eas build --profile development --platform android
 npx expo start
 ```
 
-For UI-only work, **Expo Go** (scan QR code) is faster but won't support native modules like `@react-native-voice/voice`. A development build is needed from early on.
+For UI-only work, **Expo Go** (scan QR code) is faster but won't support native modules like secure store. A development build is needed from early on. Note: Expo Go won't work when tethered to phone hotspot (device-to-device traffic blocked) — use EAS preview builds instead.
 
 ### Testing Strategy
 

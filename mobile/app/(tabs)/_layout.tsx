@@ -1,9 +1,9 @@
 import { Tabs } from 'expo-router';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../../theme';
 
 function TabIcon({ name, color, size }: { name: string; color: string; size: number }) {
-  const Icon = require('react-native-vector-icons/MaterialCommunityIcons').default;
-  return <Icon name={name} color={color} size={size} />;
+  return <MaterialCommunityIcons name={name as any} color={color} size={size} />;
 }
 
 export default function TabLayout() {
