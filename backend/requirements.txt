@@ -1,6 +1,6 @@
 fastapi>=0.115
 uvicorn[standard]>=0.34
-agent-framework-anthropic>=1.0.0b260210
+agent-framework-anthropic>=1.0.0b260219
 fastmcp>=0.5
 asyncpg>=0.30
 python-jose[cryptography]>=3.3

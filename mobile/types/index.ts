@@ -84,7 +84,7 @@ export interface ExerciseLog {
 // ===== Chat =====
 export type ChatRole = 'user' | 'assistant';
 
-export type SSEEventType = 'thinking' | 'tool_start' | 'tool_done' | 'text' | 'done';
+export type SSEEventType = 'thinking' | 'tool_start' | 'tool_done' | 'text' | 'error' | 'done';
 
 export interface SSEEvent {
   type: SSEEventType;
@@ -112,6 +112,23 @@ export interface VoiceParseRequest {
 export type VoiceParseResult =
   | { sets: { weightKg: number; reps: number; rpe?: number }[] }
   | { needsClarification: string };
+
+// ===== Chat Display =====
+export type ToolCallStatus = 'loading' | 'complete';
+
+export interface ToolCallInfo {
+  name: string;
+  status: ToolCallStatus;
+}
+
+export interface ChatDisplayMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  thinking?: string;
+  toolCalls?: ToolCallInfo[];
+  isStreaming?: boolean;
+}
 
 // ===== API =====
 export interface ApiResponse<T> {

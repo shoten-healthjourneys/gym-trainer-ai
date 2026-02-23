@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { addDays, startOfWeek, formatISO } from 'date-fns';
+import { get as apiGet } from '../services/api';
 import type { WorkoutSession, ExerciseLog } from '../types';
 
 function getCurrentWeekStart(): string {
@@ -34,11 +35,11 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   loading: false,
   error: null,
 
-  fetchWeekSessions: async (_weekStart: string) => {
+  fetchWeekSessions: async (weekStart: string) => {
     set({ loading: true, error: null });
     try {
-      // TODO: API call in later phase
-      set({ loading: false });
+      const sessions = await apiGet<WorkoutSession[]>(`/api/sessions?week_start=${encodeURIComponent(weekStart)}`);
+      set({ sessions, loading: false });
     } catch (e) {
       set({ loading: false, error: (e as Error).message });
     }
