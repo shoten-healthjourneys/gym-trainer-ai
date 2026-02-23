@@ -2,10 +2,8 @@ import { useState } from 'react';
 import { StyleSheet, View, KeyboardAvoidingView, Platform } from 'react-native';
 import { Button, Snackbar, Text, TextInput, useTheme } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuthStore } from '../../stores/authStore';
-
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const MaterialCommunityIcons = require('react-native-vector-icons/MaterialCommunityIcons').default;
 
 export default function LoginScreen() {
   const theme = useTheme();
