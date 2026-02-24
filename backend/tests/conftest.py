@@ -15,6 +15,9 @@ from httpx import ASGITransport, AsyncClient
 from app.auth import get_current_user
 from app.db import get_db
 from app.routes.profile import router as profile_router
+from app.routes.sessions import router as sessions_router
+from app.routes.exercises import router as exercises_router
+from app.routes.voice import router as voice_router
 
 TEST_USER = {
     "user_id": "00000000-0000-0000-0000-000000000099",
@@ -39,6 +42,9 @@ def app(mock_conn: AsyncMock) -> FastAPI:
 
     test_app = FastAPI(lifespan=_noop_lifespan)
     test_app.include_router(profile_router)
+    test_app.include_router(sessions_router)
+    test_app.include_router(exercises_router)
+    test_app.include_router(voice_router)
 
     # Health endpoint lives on the root app, replicate it
     @test_app.get("/health")

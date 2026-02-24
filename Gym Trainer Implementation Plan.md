@@ -1213,26 +1213,48 @@ eas build --profile preview --platform android
 
 ---
 
-#### Phase 2: Workout Planning — Journeys 3 & 4 (Hours 6-10)
+#### Phase 2: Workout Planning — Journeys 3 & 4 (Hours 6-10) ✅ COMPLETED
 
 **Delivers:** User can chat with AI trainer to plan a week, see the plan on the schedule screen with YouTube links.
 
-| Agent | Tasks | Journey | Files | Hours |
+| Agent | Tasks | Journey | Files | Status |
 |---|---|---|---|---|
-| **backend-agent** | T5: MCP tool server (all 4 tools) | J3 | `backend/app/mcp/**` | 2h |
-| | T6: Agent Framework setup (Sonnet client + system prompt) | J3 | `backend/app/agent/gym_trainer.py`, `prompts.py` | 1h |
-| | T7: SSE chat endpoint | J3 | `backend/app/routes/chat.py` | 1.5h |
-| | T8: Sessions REST routes (GET week, GET by id) | J4 | `backend/app/routes/sessions.py` | 0.5h |
-| **frontend-chat-agent** | T8: SSE consumer service | J3 | `mobile/services/sse.ts` | 1h |
-| | T9: Chat screen + streaming message display | J3 | `mobile/app/(tabs)/index.tsx` | 2h |
-| | T10: ThinkingBlock + ToolIndicator + StreamingText | J3 | `mobile/components/chat/ThinkingBlock.tsx`, `ToolIndicator.tsx`, `StreamingText.tsx` | 1.5h |
-| | T11: ChatStore (message state, SSE integration) | J3 | `mobile/stores/chatStore.ts` | 0.5h |
-| | T12: PlanCard component (rendered workout plan) | J3 | `mobile/components/chat/PlanCard.tsx` | 0.5h |
-| **frontend-workout-agent** | T6: Schedule screen (week view + workout cards) | J4 | `mobile/app/(tabs)/schedule.tsx` | 1.5h |
-| | T7: WorkoutStore — fetch sessions, week navigation | J4 | `mobile/stores/workoutStore.ts` | 1h |
-| | T8: YouTube WebView integration on exercise cards | J4 | `mobile/app/(tabs)/schedule.tsx` | 0.5h |
+| **backend-agent** | T5: MCP tool server (5 tools) | J3 | `backend/app/mcp/server.py` | ✅ |
+| | T6: Agent Framework setup (Sonnet client + system prompt) | J3 | `backend/app/agent/trainer.py`, `prompts.py` | ✅ |
+| | T7: SSE chat endpoint | J3 | `backend/app/routes/chat.py` | ✅ |
+| | T8: Sessions REST routes (GET week, GET by id) | J4 | `backend/app/routes/sessions.py` | ✅ |
+| | T9: Chat history clear endpoint | J3 | `backend/app/routes/chat.py` | ✅ |
+| **frontend-chat-agent** | T8: SSE consumer service | J3 | `mobile/services/sse.ts` | ✅ |
+| | T9: Chat screen + streaming message display | J3 | `mobile/app/(tabs)/index.tsx` | ✅ |
+| | T10: ThinkingBlock + ToolIndicator + StreamingText | J3 | `mobile/components/chat/` | ✅ |
+| | T11: ChatStore (message state, SSE integration) | J3 | `mobile/stores/chatStore.ts` | ✅ |
+| | T12: PlanCard component (rendered workout plan) | J3 | `mobile/components/chat/PlanCard.tsx` | ✅ |
+| | T13: New Chat button + clear history | J3 | `mobile/app/(tabs)/index.tsx`, `stores/chatStore.ts` | ✅ |
+| **frontend-workout-agent** | T6: Schedule screen (week view + workout cards) | J4 | `mobile/app/(tabs)/schedule.tsx` | ✅ |
+| | T7: WorkoutStore — fetch sessions, week navigation | J4 | `mobile/stores/workoutStore.ts` | ✅ |
+| | T8: YouTube link integration on exercise cards | J4 | `mobile/app/(tabs)/schedule.tsx` | ✅ |
 
-**Gate:** Can type "Plan my week" → see streaming AI response with thinking/tool indicators → PlanCard renders → approve → sessions appear on Schedule tab → can browse weeks and tap YouTube links.
+**Gate:** ✅ Can type "Plan my week" → agent loads profile via MCP → asks targeted clarifying questions → streams plan with tool indicators → PlanCard renders with "Building your plan..." spinner → approve → plan saved to DB → sessions appear on Schedule tab → can browse weeks and tap YouTube links → "New Chat" button clears history.
+
+**Issues encountered and resolved:**
+1. **`agent-framework-anthropic` version**: PyPI has `>=1.0.0b260219`, not `>=1.0.0rc1` as planned
+2. **OpenTelemetry SpanAttributes compatibility**: agent-framework-core references attributes missing from `opentelemetry-semantic-conventions-ai` — fixed with `_otel_patch.py` monkey-patch
+3. **Content type API**: Beta uses unified `Content` class with `.type` string attribute, not separate `TextReasoningContent`/`FunctionCallContent` classes — fixed to use string matching
+4. **Extended thinking signature error**: Multi-turn conversations with thinking enabled fail with `thinking.signature: Field required` — disabled thinking (agent works fine without it)
+5. **React Native `atob()` missing**: Caused silent token deletion — replaced with custom `base64Decode()` in auth.ts and authStore.ts
+6. **MCP connection ordering**: API server must start AFTER MCP server to establish session — documented startup order
+7. **Tool event matching**: `function_call` streams 1000+ chunks (argument tokens) while `function_result` uses `call_id` not `name` — fixed with `call_id`-based tracking and deduplication
+8. **Plan save duplicates**: `save_workout_plan` now does upsert (delete existing + insert) with `UNIQUE(user_id, week_start)` constraint
+9. **Raw JSON flash during plan streaming**: Added `stripPlanBlock()` to hide partial ```plan blocks, shows "Building your plan..." spinner instead
+
+**MCP tools implemented (5 total):**
+| Tool | Purpose |
+|---|---|
+| `get_user_profile` | Load user goals, experience, days, preferred unit |
+| `get_exercise_history` | Recent logged sets for progressive overload |
+| `get_planned_workouts` | Query existing sessions by date range |
+| `search_youtube` | Exercise demo URLs (stubbed — returns search URL) |
+| `save_workout_plan` | Persist plan + sessions (upsert per week) |
 
 ---
 
