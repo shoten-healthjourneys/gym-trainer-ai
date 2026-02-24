@@ -21,6 +21,8 @@ from app.routes.voice import router as voice_router
 
 
 _SCHEMA_SQL = """
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 CREATE TABLE IF NOT EXISTS profiles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     display_name VARCHAR(100),
@@ -74,6 +76,17 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     tool_calls JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+CREATE TABLE IF NOT EXISTS exercises (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(100) UNIQUE NOT NULL,
+    aliases TEXT[] DEFAULT '{}',
+    muscle_group VARCHAR(50),
+    category VARCHAR(30),
+    equipment VARCHAR(50),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_exercises_name_trgm ON exercises USING gin (name gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_exercise_logs_lookup ON exercise_logs(user_id, exercise_name, logged_at);
 CREATE INDEX IF NOT EXISTS idx_sessions_schedule ON workout_sessions(user_id, scheduled_date);
 CREATE INDEX IF NOT EXISTS idx_chat_history ON chat_messages(user_id, created_at);
@@ -83,8 +96,11 @@ CREATE INDEX IF NOT EXISTS idx_chat_history ON chat_messages(user_id, created_at
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.pool = await asyncpg.create_pool(dsn=settings.DATABASE_URL)
+    from app.seed_exercises import seed_exercises
+
     async with app.state.pool.acquire() as conn:
         await conn.execute(_SCHEMA_SQL)
+        await seed_exercises(conn)
         # Seed dev user if not exists
         exists = await conn.fetchval(
             "SELECT 1 FROM profiles WHERE email = $1", "shotend@gmail.com"

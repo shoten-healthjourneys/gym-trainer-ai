@@ -45,17 +45,10 @@ async def test_voice_parse_success(MockDG, MockAnthropic, client: AsyncClient, m
     now = datetime.now(timezone.utc)
     log_id = uuid.uuid4()
 
-    mock_conn.fetchrow.side_effect = [
-        # session validation
-        {"id": uuid.UUID(TEST_SESSION_ID), "user_id": uuid.UUID(TEST_USER_ID), "status": "in_progress"},
-        # set_number
-        {"next_set": 1},
-        # fetch created log
-        {"id": log_id, "user_id": uuid.UUID(TEST_USER_ID), "session_id": uuid.UUID(TEST_SESSION_ID),
-         "exercise_name": "Bench Press", "set_number": 1, "weight_kg": 80.0, "reps": 8, "rpe": None, "notes": None, "logged_at": now},
-    ]
+    mock_conn.fetchrow.return_value = {
+        "id": uuid.UUID(TEST_SESSION_ID), "user_id": uuid.UUID(TEST_USER_ID), "status": "in_progress",
+    }
     mock_conn.fetch.return_value = []  # no previous sets
-    mock_conn.execute.return_value = "INSERT 0 1"
 
     resp = await client.post(
         "/api/voice/parse",
@@ -64,9 +57,9 @@ async def test_voice_parse_success(MockDG, MockAnthropic, client: AsyncClient, m
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert "log" in data
-    assert data["log"]["weightKg"] == 80.0
-    assert data["log"]["reps"] == 8
+    assert data["transcript"] == "80 kg for 8 reps"
+    assert data["parsed"]["weightKg"] == 80
+    assert data["parsed"]["reps"] == 8
 
 
 @pytest.mark.asyncio
