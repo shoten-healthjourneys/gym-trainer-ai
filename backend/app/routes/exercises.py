@@ -8,6 +8,7 @@ from pydantic.alias_generators import to_camel
 
 from app.auth import get_current_user
 from app.db import get_db, fetch_one, fetch_all, execute
+from app.exercise_resolver import resolve_exercise_name
 
 router = APIRouter(prefix="/api/exercises", tags=["exercises"])
 
@@ -69,12 +70,15 @@ async def create_exercise_log(
     session_id = uuid.UUID(body.session_id)
     await _validate_session(conn, session_id, user_id)
 
+    # Resolve to canonical exercise name
+    resolved_name = await resolve_exercise_name(conn, body.exercise_name)
+
     # Auto-calculate set_number
     result = await fetch_one(
         conn,
         "SELECT COALESCE(MAX(set_number), 0) + 1 AS next_set FROM exercise_logs WHERE session_id = $1 AND exercise_name = $2",
         session_id,
-        body.exercise_name,
+        resolved_name,
     )
     set_number = result["next_set"]
 
@@ -83,7 +87,7 @@ async def create_exercise_log(
         conn,
         """INSERT INTO exercise_logs (id, user_id, session_id, exercise_name, set_number, weight_kg, reps, rpe, notes)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)""",
-        log_id, user_id, session_id, body.exercise_name, set_number,
+        log_id, user_id, session_id, resolved_name, set_number,
         body.weight_kg, body.reps, body.rpe, body.notes,
     )
 

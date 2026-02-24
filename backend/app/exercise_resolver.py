@@ -1,0 +1,69 @@
+import logging
+
+import asyncpg
+
+logger = logging.getLogger("exercise_resolver")
+
+
+async def resolve_exercise_name(conn: asyncpg.Connection, raw_name: str) -> str:
+    """Resolve a raw exercise name to its canonical form.
+
+    Returns the canonical name, or the original if no match found.
+
+    Strategy:
+    1. Exact match (case-insensitive) on exercises.name
+    2. Alias match (case-insensitive) on exercises.aliases array
+    3. Trigram similarity >= 0.4 on exercises.name
+    """
+    if not raw_name or not raw_name.strip():
+        return raw_name
+
+    raw_name = raw_name.strip()
+
+    # 1. Exact match on canonical name
+    row = await conn.fetchrow(
+        "SELECT name FROM exercises WHERE LOWER(name) = LOWER($1)",
+        raw_name,
+    )
+    if row:
+        return row["name"]
+
+    # 2. Alias match
+    row = await conn.fetchrow(
+        """SELECT name FROM exercises
+           WHERE EXISTS (
+               SELECT 1 FROM unnest(aliases) AS a WHERE LOWER(a) = LOWER($1)
+           )""",
+        raw_name,
+    )
+    if row:
+        logger.info("Resolved '%s' via alias to '%s'", raw_name, row["name"])
+        return row["name"]
+
+    # 3. Trigram similarity
+    row = await conn.fetchrow(
+        """SELECT name, similarity(name, $1) AS sim
+           FROM exercises
+           WHERE similarity(name, $1) >= 0.4
+           ORDER BY sim DESC
+           LIMIT 1""",
+        raw_name,
+    )
+    if row:
+        logger.info(
+            "Resolved '%s' via trigram (sim=%.2f) to '%s'",
+            raw_name,
+            row["sim"],
+            row["name"],
+        )
+        return row["name"]
+
+    # No match found — auto-insert as a new canonical exercise
+    await conn.execute(
+        """INSERT INTO exercises (name)
+           VALUES ($1)
+           ON CONFLICT (name) DO NOTHING""",
+        raw_name,
+    )
+    logger.info("Auto-inserted new exercise: '%s'", raw_name)
+    return raw_name

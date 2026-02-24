@@ -7,6 +7,7 @@ import asyncpg
 from fastmcp import FastMCP
 
 from app.config import settings
+from app.exercise_resolver import resolve_exercise_name
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger("mcp.tools")
@@ -69,6 +70,7 @@ async def get_exercise_history(
     logger.info("[get_exercise_history] user_id=%s, exercise=%s, limit=%d", user_id, exercise_name, limit)
     pool = await _get_pool()
     async with pool.acquire() as conn:
+        resolved = await resolve_exercise_name(conn, exercise_name)
         rows = await conn.fetch(
             """SELECT weight_kg, reps, rpe, logged_at
                FROM exercise_logs
@@ -76,7 +78,7 @@ async def get_exercise_history(
                ORDER BY logged_at DESC
                LIMIT $3""",
             uuid.UUID(user_id),
-            exercise_name,
+            resolved,
             limit,
         )
     if not rows:
@@ -195,6 +197,10 @@ async def save_workout_plan(user_id: str, week_start: str, plan: str) -> dict:
                     continue
                 scheduled = start + timedelta(days=offset)
                 session_id = uuid.uuid4()
+                # Resolve exercise names to canonical forms
+                for exercise in session.get("exercises", []):
+                    if exercise.get("name"):
+                        exercise["name"] = await resolve_exercise_name(conn, exercise["name"])
                 await conn.execute(
                     """INSERT INTO workout_sessions
                        (id, user_id, plan_id, scheduled_date, title, exercises)
@@ -258,6 +264,11 @@ async def add_session_to_week(user_id: str, week_start: str, session: str) -> di
                 uid, scheduled, plan_id,
             )
 
+            # Resolve exercise names to canonical forms
+            for exercise in session_data.get("exercises", []):
+                if exercise.get("name"):
+                    exercise["name"] = await resolve_exercise_name(conn, exercise["name"])
+
             session_id = uuid.uuid4()
             await conn.execute(
                 """INSERT INTO workout_sessions
@@ -306,6 +317,10 @@ async def update_session(user_id: str, session_id: str, updates: str) -> dict:
             params.append(updates_data["title"])
 
         if "exercises" in updates_data:
+            # Resolve exercise names to canonical forms
+            for exercise in updates_data["exercises"]:
+                if exercise.get("name"):
+                    exercise["name"] = await resolve_exercise_name(conn, exercise["name"])
             param_idx += 1
             set_clauses.append(f"exercises = ${param_idx}")
             params.append(json.dumps(updates_data["exercises"]))
@@ -319,6 +334,40 @@ async def update_session(user_id: str, session_id: str, updates: str) -> dict:
     result = {"session_id": session_id, "message": "Session updated successfully."}
     logger.info("[update_session] done: %s", result)
     return result
+
+
+@mcp.tool()
+async def search_exercises(query: str, limit: int = 10) -> dict:
+    """Search the exercise database by name. Returns matching exercises
+    with their canonical names, muscle groups, and categories.
+    Use this to find the correct canonical name for an exercise."""
+    logger.info("[search_exercises] query=%s, limit=%d", query, limit)
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT name, muscle_group, category, equipment,
+                      similarity(name, $1) AS sim
+               FROM exercises
+               WHERE similarity(name, $1) >= 0.1
+               ORDER BY sim DESC
+               LIMIT $2""",
+            query,
+            limit,
+        )
+    if not rows:
+        return {"matches": [], "note": f"No exercises found matching '{query}'."}
+    return {
+        "matches": [
+            {
+                "name": r["name"],
+                "muscle_group": r["muscle_group"],
+                "category": r["category"],
+                "equipment": r["equipment"],
+                "similarity": round(float(r["sim"]), 2),
+            }
+            for r in rows
+        ]
+    }
 
 
 if __name__ == "__main__":

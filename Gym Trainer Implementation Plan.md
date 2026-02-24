@@ -724,6 +724,11 @@ async def save_workout_plan(user_id: str, week_start: str, plan: dict) -> dict:
     """Save a structured weekly workout plan and create workout sessions."""
     ...
 
+@mcp.tool()
+async def search_exercises(query: str, limit: int = 10) -> dict:
+    """Search canonical exercise database by name (trigram similarity)."""
+    ...
+
 # Run MCP server alongside FastAPI
 # FastAPI on :8000, MCP on :8080
 ```
@@ -870,11 +875,27 @@ CREATE TABLE chat_messages (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Canonical exercise reference table with fuzzy name resolution
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+CREATE TABLE exercises (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(100) UNIQUE NOT NULL,
+    aliases TEXT[] DEFAULT '{}',
+    muscle_group VARCHAR(50),          -- chest, back, shoulders, legs, arms, core, full_body
+    category VARCHAR(30),              -- compound, isolation, bodyweight, cardio
+    equipment VARCHAR(50),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Indexes for performance
+CREATE INDEX idx_exercises_name_trgm ON exercises USING gin (name gin_trgm_ops);
 CREATE INDEX idx_exercise_logs_lookup ON exercise_logs(user_id, exercise_name, logged_at);
 CREATE INDEX idx_sessions_schedule ON workout_sessions(user_id, scheduled_date);
 CREATE INDEX idx_chat_history ON chat_messages(user_id, created_at);
 ```
+
+**Exercise Name Resolution:** All exercise names pass through a 3-tier resolver on write (exact match → alias match → trigram similarity ≥ 0.4). If no match is found, the name is auto-inserted as a new canonical exercise. This ensures `exercise_logs` and `workout_sessions.exercises` always use consistent names, enabling reliable progressive overload tracking. See `backend/app/exercise_resolver.py`.
 
 ---
 
@@ -907,6 +928,8 @@ gym-trainer/
 │   │   │   ├── gym_trainer.py      # Agent Framework setup + system prompt
 │   │   │   ├── voice_parser.py     # Haiku voice parsing agent
 │   │   │   └── prompts.py          # System prompts
+│   │   ├── exercise_resolver.py    # 3-tier name resolution (exact → alias → trigram)
+│   │   ├── seed_exercises.py       # ~62 canonical exercises seeded on startup
 │   │   ├── mcp/
 │   │   │   ├── server.py           # FastMCP tool server
 │   │   │   ├── tools/
@@ -1247,7 +1270,7 @@ eas build --profile preview --platform android
 8. **Plan save duplicates**: `save_workout_plan` now does upsert (delete existing + insert) with `UNIQUE(user_id, week_start)` constraint
 9. **Raw JSON flash during plan streaming**: Added `stripPlanBlock()` to hide partial ```plan blocks, shows "Building your plan..." spinner instead
 
-**MCP tools implemented (5 total):**
+**MCP tools implemented (5 total at end of Phase 2, 8 total after Phase 3):**
 | Tool | Purpose |
 |---|---|
 | `get_user_profile` | Load user goals, experience, days, preferred unit |
@@ -1258,26 +1281,62 @@ eas build --profile preview --platform android
 
 ---
 
-#### Phase 3: Active Training — Journeys 5, 6, 7 & 8 (Hours 10-14)
+#### Phase 3: Active Training — Journeys 5, 6, 7 & 8 (Hours 10-14) ✅ COMPLETED
 
 **Delivers:** User can start a workout, voice-log sets, manually edit mistakes, and complete the session.
 
-| Agent | Tasks | Journey | Files | Hours |
+| Agent | Tasks | Journey | Files | Status |
 |---|---|---|---|---|
-| **backend-agent** | T9: Voice parse endpoint (Haiku agent) | J6 | `backend/app/agent/voice_parser.py`, `backend/app/routes/voice.py` | 1.5h |
-| | T10: Exercise log routes (POST, PATCH, DELETE) | J6, J7 | `backend/app/routes/exercises.py` | 1h |
-| | T11: Session status routes (start, complete) | J5, J8 | `backend/app/routes/sessions.py` | 0.5h |
-| | T12: MCP tool + voice parser tests | J6 | `backend/tests/test_mcp_tools.py`, `test_voice_parser.py` | 1h |
-| **frontend-chat-agent** | T13: ChatInput component (text input + send) | J3 | `mobile/components/chat/ChatInput.tsx` | 0.5h |
-| | T14: MessageBubble component | J3 | `mobile/components/chat/MessageBubble.tsx` | 0.5h |
-| | T15: Chat history persistence + scroll behaviour | J3 | `mobile/app/(tabs)/index.tsx` | 1h |
-| **frontend-workout-agent** | T9: Active workout screen (exercise list + previous bests) | J5 | `mobile/app/(tabs)/workout/[sessionId].tsx` | 2h |
-| | T10: VoiceButton + voice service (Android STT + Deepgram fallback) | J6 | `mobile/components/workout/VoiceButton.tsx`, `mobile/services/voice.ts` | 1.5h |
-| | T11: SetLogger component (display logged sets, tap to edit) | J6, J7 | `mobile/components/workout/SetLogger.tsx` | 1h |
-| | T12: Manual edit dialog (edit weight/reps/RPE, delete set) | J7 | `mobile/components/workout/SetLogger.tsx` | 0.5h |
-| | T13: Workout completion flow (complete button, summary) | J8 | `mobile/app/(tabs)/workout/[sessionId].tsx` | 0.5h |
+| **backend-agent** | T9: Voice parse endpoint (Deepgram STT + Haiku parsing) | J6 | `backend/app/routes/voice.py` | ✅ |
+| | T10: Exercise log routes (POST, PATCH, DELETE, GET) | J6, J7 | `backend/app/routes/exercises.py` | ✅ |
+| | T11: Session status routes (start, complete, GET by id) | J5, J8 | `backend/app/routes/sessions.py` | ✅ |
+| | T12: MCP new tools: `add_session_to_week`, `update_session` | J11 | `backend/app/mcp/server.py` | ✅ |
+| | T12b: Fixed `get_planned_workouts` JOIN → LEFT JOIN | J4 | `backend/app/mcp/server.py` | ✅ |
+| | T12c: Fixed AnthropicClient module-level instantiation | — | `backend/app/agent/trainer.py` | ✅ |
+| **frontend-workout-agent** | T9: Active workout screen (exercise list + timer) | J5 | `mobile/app/(tabs)/workout/[sessionId].tsx` | ✅ |
+| | T9b: Fetch session from API when not in store (404 fix) | J5 | `mobile/app/(tabs)/workout/[sessionId].tsx` | ✅ |
+| | T10: VoiceButton (toggle tap, confirmation dialog with transcript) | J6 | `mobile/components/workout/VoiceButton.tsx` | ✅ |
+| | T10b: Voice service (Deepgram via backend, expo-av recording) | J6 | `mobile/services/voice.ts` | ✅ |
+| | T11: SetLogger component (display logged sets, tap to edit/delete) | J6, J7 | `mobile/components/workout/SetLogger.tsx` | ✅ |
+| | T12: ManualSetDialog (add/edit weight/reps/RPE) | J7 | `mobile/components/workout/ManualSetDialog.tsx` | ✅ |
+| | T13: Workout completion flow (complete button, web compat) | J8 | `mobile/app/(tabs)/workout/[sessionId].tsx` | ✅ |
+| | T14: Schedule — "Start Workout" on all scheduled sessions (not just today) | J5 | `mobile/app/(tabs)/schedule.tsx` | ✅ |
+| | T15: Made `planId` optional in TypeScript types | — | `mobile/types/index.ts` | ✅ |
 
-**Gate:** Can tap "Start Workout" from schedule → see exercises with previous bests → hold mic → say "80kg for 8 reps" → set logged → tap set to edit → correct it → complete workout → see summary.
+**Gate:** ✅ Can tap "Start Workout" from schedule (any day) → see exercises → tap mic → say "80kg for 8 reps" → see transcript + parsed result → confirm to log → tap set to edit/delete → complete workout → navigates back.
+
+**Issues encountered and resolved:**
+1. **"Start Workout" only showed for today's sessions** — Removed `isToday()` restriction, button now shows for all `scheduled` sessions
+2. **404 when tapping "Start Workout" on non-current-week sessions** — Session wasn't in store's `sessions` array. Added API fallback: fetches from `GET /api/sessions/{id}` when not found in store
+3. **`planId` required in TypeScript** — Sessions created by `add_session_to_week` or manual DB inserts have `planId: null`. Made it optional: `planId?: string | null`
+4. **AI couldn't add individual sessions** — `UNIQUE(user_id, week_start)` on `workout_plans` meant the agent could only replace entire weeks. Added `add_session_to_week` (find-or-create plan, replace single day) and `update_session` (modify title/exercises) MCP tools
+5. **`Alert.alert` callbacks don't work on web** — "Complete Workout" confirmation never fired on Expo Web. Added `Platform.OS === 'web'` check with `window.confirm` fallback
+6. **`AnthropicClient` created at module import time** — Failed before `.env` was loaded. Moved instantiation into `create_agent()` function with explicit `api_key=settings.ANTHROPIC_API_KEY`
+7. **Voice hold-to-record UX issues** — Short taps produced empty audio (0% confidence). Changed to toggle tap (tap to start, tap to stop)
+8. **Voice auto-logged without user confirmation** — Backend returned transcript + parsed data, frontend now shows confirmation dialog with "You said:" transcript and "Parsed as:" weight × reps before logging
+9. **Snackbar barely readable** — Increased duration to 6s, added accent border and explicit text color
+10. **Expo SDK 52 → 54 upgrade** — Expo Go on phone required SDK 54. Upgraded all deps, installed `react-native-worklets` (peer dep of reanimated v4)
+11. **Exercise name fragmentation** — "Bench Press" vs "Barbell Bench Press" treated as separate exercises, breaking progressive overload tracking. Added canonical `exercises` table (62 seeded exercises with aliases), `pg_trgm` extension for fuzzy matching, and a 3-tier resolver (exact → alias → trigram ≥ 0.4) applied at all write points. Unknown exercises are auto-inserted as new canonical entries. Added `search_exercises` MCP tool so the AI agent can look up correct names.
+
+**Voice logging flow (final):**
+1. Tap mic → starts recording (icon changes to stop, button turns red)
+2. Tap again → stops, sends audio to `POST /api/voice/parse`
+3. Backend: Deepgram STT → Claude Haiku parses → returns `{transcript, parsed: {weightKg, reps, rpe}}`
+4. Confirmation dialog shows transcript + parsed values
+5. "Log Set" confirms → calls `POST /api/exercises/log` → set appears in UI
+6. "Redo" dismisses → user can try again
+
+**MCP tools (8 total after Phase 3):**
+| Tool | Purpose |
+|---|---|
+| `get_user_profile` | Load user goals, experience, days, preferred unit |
+| `get_exercise_history` | Recent logged sets for progressive overload (resolves name before query) |
+| `get_planned_workouts` | Query existing sessions by date range (LEFT JOIN) |
+| `search_youtube` | Exercise demo URLs (stubbed — returns search URL) |
+| `save_workout_plan` | Persist plan + sessions (upsert per week, resolves exercise names) |
+| `add_session_to_week` | Add/replace a single session on a given day (resolves exercise names) |
+| `update_session` | Update an existing session's title or exercises (resolves exercise names) |
+| `search_exercises` | Search canonical exercise database by name (trigram similarity) |
 
 ---
 
@@ -1285,19 +1344,21 @@ eas build --profile preview --platform android
 
 **Delivers:** User can track progress over time, ask AI for ad-hoc advice, and re-plan their schedule via chat.
 
+**Prerequisite from Phase 3:** Exercise name resolver is already integrated at all write points. All `exercise_logs` entries use canonical names, so progress queries return unified history (e.g. "bench press" and "BB bench" both resolve to "Barbell Bench Press" on insert). The `search_exercises` MCP tool lets the AI agent verify exercise names before generating plans.
+
 | Agent | Tasks | Journey | Files | Hours |
 |---|---|---|---|---|
-| **backend-agent** | T13: Exercise history query route (for charts) | J9 | `backend/app/routes/exercises.py` | 0.5h |
-| | T14: Backend route tests (chat, sessions, exercises) | All | `backend/tests/test_routes.py` | 1h |
+| **backend-agent** | T13: Exercise history query route (for charts) — query `exercises` table for exercise picker, resolve names on read queries | J9 | `backend/app/routes/exercises.py` | 0.5h |
+| | T14: Backend route tests (chat, sessions, exercises, exercise resolver) | All | `backend/tests/` | 1h |
 | **frontend-chat-agent** | T16: Error handling + offline/retry states | J10, J11 | Various chat components | 0.5h |
-| **frontend-workout-agent** | T14: Progress screen (exercise picker + line chart) | J9 | `mobile/app/(tabs)/progress.tsx` | 1.5h |
+| **frontend-workout-agent** | T14: Progress screen — exercise picker populated from `exercises` table (canonical names), line chart for selected exercise | J9 | `mobile/app/(tabs)/progress.tsx` | 1.5h |
 | | T15: WeightChart component (weight over time) | J9 | `mobile/components/progress/WeightChart.tsx` | 1h |
 | | T16: HistoryTable component (recent sets) | J9 | `mobile/components/progress/HistoryTable.tsx` | 0.5h |
 | | T17: RestTimer component | J5 | `mobile/components/workout/RestTimer.tsx` | 0.5h |
 
-**Gate:** Can view progress chart for any exercise → see weight trend over time → ask AI "should I deload?" and get contextual advice → say "move Thursday to Saturday" and schedule updates.
+**Gate:** Can view progress chart for any exercise → see weight trend over time (all data unified under canonical names) → ask AI "should I deload?" and get contextual advice using `get_exercise_history` (which resolves names) → say "move Thursday to Saturday" and schedule updates.
 
-*Note: Journeys 10 (ad-hoc chat) and 11 (re-plan) work automatically once Journey 3's chat infrastructure is complete — the AI agent handles these via existing MCP tools. This phase validates they work correctly.*
+*Note: Journeys 10 (ad-hoc chat) and 11 (re-plan) work automatically once Journey 3's chat infrastructure is complete — the AI agent handles these via existing MCP tools (including `search_exercises` for name verification). This phase validates they work correctly.*
 
 ---
 

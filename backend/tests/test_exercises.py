@@ -12,10 +12,12 @@ async def test_create_exercise_log(client: AsyncClient, mock_conn):
     log_id = uuid.uuid4()
     now = datetime.now(timezone.utc)
 
-    # Mock session validation
+    # Mock session validation + exercise resolver + set_number + fetch log
     mock_conn.fetchrow.side_effect = [
         # _validate_session
         {"id": uuid.UUID(TEST_SESSION_ID), "user_id": uuid.UUID(TEST_USER_ID), "status": "in_progress"},
+        # resolve_exercise_name: exact match
+        {"name": "Barbell Bench Press"},
         # set_number query
         {"next_set": 1},
         # fetch created log
