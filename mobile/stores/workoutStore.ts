@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { addDays, startOfWeek, formatISO } from 'date-fns';
-import { get as apiGet } from '../services/api';
+import { get as apiGet, post, patch, del } from '../services/api';
 import type { WorkoutSession, ExerciseLog } from '../types';
 
 function getCurrentWeekStart(): string {
@@ -19,9 +19,11 @@ interface WorkoutState {
   fetchWeekSessions: (weekStart: string) => Promise<void>;
   startSession: (sessionId: string) => Promise<void>;
   completeSession: (sessionId: string) => Promise<void>;
-  logSet: (sessionId: string, exerciseName: string, set: Partial<ExerciseLog>) => Promise<void>;
+  logSet: (sessionId: string, exerciseName: string, setData: { weightKg: number; reps: number; rpe?: number; notes?: string }) => Promise<void>;
   updateSet: (logId: string, updates: Partial<ExerciseLog>) => Promise<void>;
-  deleteSet: (logId: string) => Promise<void>;
+  deleteSet: (logId: string, exerciseName: string) => Promise<void>;
+  fetchExerciseLogs: (sessionId: string, exerciseName: string) => Promise<void>;
+  setActiveSession: (session: WorkoutSession | null) => void;
   nextWeek: () => void;
   prevWeek: () => void;
   clearError: () => void;
@@ -45,54 +47,105 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     }
   },
 
-  startSession: async (_sessionId: string) => {
+  startSession: async (sessionId: string) => {
     set({ loading: true, error: null });
     try {
-      // TODO: API call in later phase
-      set({ loading: false });
+      const session = await post<WorkoutSession>(`/api/sessions/${encodeURIComponent(sessionId)}/start`, {});
+      set((state) => ({
+        activeSession: session,
+        sessions: state.sessions.map((s) => (s.id === sessionId ? session : s)),
+        loading: false,
+      }));
     } catch (e) {
       set({ loading: false, error: (e as Error).message });
     }
   },
 
-  completeSession: async (_sessionId: string) => {
+  completeSession: async (sessionId: string) => {
     set({ loading: true, error: null });
     try {
-      // TODO: API call in later phase
-      set({ loading: false });
+      const session = await post<WorkoutSession>(`/api/sessions/${encodeURIComponent(sessionId)}/complete`, {});
+      set((state) => ({
+        activeSession: null,
+        exerciseLogs: {},
+        sessions: state.sessions.map((s) => (s.id === sessionId ? session : s)),
+        loading: false,
+      }));
     } catch (e) {
       set({ loading: false, error: (e as Error).message });
     }
   },
 
-  logSet: async (_sessionId: string, _exerciseName: string, _setData: Partial<ExerciseLog>) => {
+  logSet: async (sessionId: string, exerciseName: string, setData) => {
     set({ loading: true, error: null });
     try {
-      // TODO: API call in later phase
-      set({ loading: false });
+      const log = await post<ExerciseLog>('/api/exercises/log', {
+        sessionId,
+        exerciseName,
+        ...setData,
+      });
+      set((state) => ({
+        exerciseLogs: {
+          ...state.exerciseLogs,
+          [exerciseName]: [...(state.exerciseLogs[exerciseName] ?? []), log],
+        },
+        loading: false,
+      }));
     } catch (e) {
       set({ loading: false, error: (e as Error).message });
     }
   },
 
-  updateSet: async (_logId: string, _updates: Partial<ExerciseLog>) => {
+  updateSet: async (logId: string, updates: Partial<ExerciseLog>) => {
     set({ loading: true, error: null });
     try {
-      // TODO: API call in later phase
-      set({ loading: false });
+      const updated = await patch<ExerciseLog>(`/api/exercises/log/${encodeURIComponent(logId)}`, updates);
+      set((state) => {
+        const newLogs = { ...state.exerciseLogs };
+        for (const key of Object.keys(newLogs)) {
+          newLogs[key] = newLogs[key]!.map((l) => (l.id === logId ? updated : l));
+        }
+        return { exerciseLogs: newLogs, loading: false };
+      });
     } catch (e) {
       set({ loading: false, error: (e as Error).message });
     }
   },
 
-  deleteSet: async (_logId: string) => {
+  deleteSet: async (logId: string, exerciseName: string) => {
     set({ loading: true, error: null });
     try {
-      // TODO: API call in later phase
-      set({ loading: false });
+      await del(`/api/exercises/log/${encodeURIComponent(logId)}`);
+      set((state) => ({
+        exerciseLogs: {
+          ...state.exerciseLogs,
+          [exerciseName]: (state.exerciseLogs[exerciseName] ?? []).filter((l) => l.id !== logId),
+        },
+        loading: false,
+      }));
     } catch (e) {
       set({ loading: false, error: (e as Error).message });
     }
+  },
+
+  fetchExerciseLogs: async (sessionId: string, exerciseName: string) => {
+    try {
+      const logs = await apiGet<ExerciseLog[]>(
+        `/api/exercises/log?session_id=${encodeURIComponent(sessionId)}&exercise_name=${encodeURIComponent(exerciseName)}`,
+      );
+      set((state) => ({
+        exerciseLogs: {
+          ...state.exerciseLogs,
+          [exerciseName]: logs,
+        },
+      }));
+    } catch (e) {
+      set({ error: (e as Error).message });
+    }
+  },
+
+  setActiveSession: (session: WorkoutSession | null) => {
+    set({ activeSession: session });
   },
 
   nextWeek: () => {

@@ -57,7 +57,7 @@ export interface ExerciseInSession {
 export interface WorkoutSession {
   id: string;
   userId: string;
-  planId: string;
+  planId?: string | null;
   scheduledDate: string;
   title: string;
   status: SessionStatus;
@@ -103,15 +103,17 @@ export interface ChatMessage {
 }
 
 // ===== Voice =====
-export interface VoiceParseRequest {
-  transcript: string;
-  exercise: string;
-  previousSets: { weightKg: number; reps: number }[];
+export interface VoiceParsedSet {
+  weightKg: number;
+  reps: number;
+  rpe?: number | null;
 }
 
-export type VoiceParseResult =
-  | { sets: { weightKg: number; reps: number; rpe?: number }[] }
-  | { needsClarification: string };
+export interface VoiceParseResponse {
+  transcript?: string;
+  parsed?: VoiceParsedSet;
+  needsClarification?: string;
+}
 
 // ===== Chat Display =====
 export type ToolCallStatus = 'loading' | 'complete';

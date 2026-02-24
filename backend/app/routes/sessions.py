@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import get_current_user
-from app.db import get_db, fetch_one, fetch_all
+from app.db import get_db, fetch_one, fetch_all, execute
 
 router = APIRouter(prefix="/api", tags=["sessions"])
 
@@ -87,3 +87,67 @@ async def get_session(
     if not row:
         raise HTTPException(status_code=404, detail="Session not found")
     return _to_camel(row)
+
+
+@router.post("/sessions/{session_id}/start")
+async def start_session(
+    session_id: uuid.UUID,
+    user: dict = Depends(get_current_user),
+    conn=Depends(get_db),
+):
+    user_id = uuid.UUID(user["user_id"])
+    row = await fetch_one(
+        conn,
+        "SELECT * FROM workout_sessions WHERE id = $1 AND user_id = $2",
+        session_id, user_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if row["status"] != "scheduled":
+        raise HTTPException(status_code=400, detail=f"Cannot start session with status '{row['status']}'")
+
+    await execute(
+        conn,
+        "UPDATE workout_sessions SET status = 'in_progress', started_at = NOW() WHERE id = $1",
+        session_id,
+    )
+    updated = await fetch_one(
+        conn,
+        """SELECT id, user_id, plan_id, scheduled_date, title, status,
+                  exercises, started_at, completed_at, created_at
+           FROM workout_sessions WHERE id = $1""",
+        session_id,
+    )
+    return _to_camel(updated)
+
+
+@router.post("/sessions/{session_id}/complete")
+async def complete_session(
+    session_id: uuid.UUID,
+    user: dict = Depends(get_current_user),
+    conn=Depends(get_db),
+):
+    user_id = uuid.UUID(user["user_id"])
+    row = await fetch_one(
+        conn,
+        "SELECT * FROM workout_sessions WHERE id = $1 AND user_id = $2",
+        session_id, user_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if row["status"] != "in_progress":
+        raise HTTPException(status_code=400, detail=f"Cannot complete session with status '{row['status']}'")
+
+    await execute(
+        conn,
+        "UPDATE workout_sessions SET status = 'completed', completed_at = NOW() WHERE id = $1",
+        session_id,
+    )
+    updated = await fetch_one(
+        conn,
+        """SELECT id, user_id, plan_id, scheduled_date, title, status,
+                  exercises, started_at, completed_at, created_at
+           FROM workout_sessions WHERE id = $1""",
+        session_id,
+    )
+    return _to_camel(updated)

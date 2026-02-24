@@ -38,6 +38,23 @@ Detailed implementation plan can be found here - Gym Trainer Implementation Plan
 ## Shared interfaces (types/index.ts) — owned by frontend-workout-agent
 Other agents should coordinate via lead before modifying types.
 
+## Local Development
+
+### Prerequisites
+- PostgreSQL running locally (user: `gymtrainer`, password: `gymtrainer_dev`, db: `gymtrainer`)
+- Backend `.env` at `backend/.env` (gitignored) with `DATABASE_URL`, `ANTHROPIC_API_KEY`, `JWT_SECRET`, `DEEPGRAM_API_KEY`, `CORS_ORIGINS`
+- Mobile `.env` at `mobile/.env` with `EXPO_PUBLIC_API_URL` (e.g. `http://192.168.0.190:8000` for device, `http://localhost:8000` for web)
+
+### Running locally
+1. **Backend:** `cd backend && .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload`
+2. **Mobile (web):** `cd mobile && npx expo start --web`
+3. **Mobile (device):** `cd mobile && npx expo start` then scan QR
+
+### Verifying
+- Backend health: `curl http://localhost:8000/health`
+- TypeScript: `cd mobile && npx tsc --noEmit`
+- Backend tests: `cd backend && pytest`
+
 ## Testing
 - Backend: pytest with httpx for route tests, MCP tool tests
 - Mobile unit: Jest for stores, services, parsing logic

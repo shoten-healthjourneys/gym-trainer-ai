@@ -122,7 +122,7 @@ async def get_planned_workouts(
             """SELECT s.id, s.scheduled_date, s.title, s.status, s.exercises,
                       p.week_start
                FROM workout_sessions s
-               JOIN workout_plans p ON s.plan_id = p.id
+               LEFT JOIN workout_plans p ON s.plan_id = p.id
                WHERE s.user_id = $1
                  AND s.scheduled_date BETWEEN $2 AND $3
                ORDER BY s.scheduled_date""",
@@ -214,6 +214,110 @@ async def save_workout_plan(user_id: str, week_start: str, plan: str) -> dict:
         "message": f"Plan saved with {sessions_created} sessions starting {week_start}.",
     }
     logger.info("[save_workout_plan] done: %s", result)
+    return result
+
+
+@mcp.tool()
+async def add_session_to_week(user_id: str, week_start: str, session: str) -> dict:
+    """Add a single workout session to an existing week without modifying other sessions.
+    session is a JSON string: {"day": "Tuesday", "title": "Leg Day", "exercises": [...]}
+    If a session already exists on that day, it will be replaced."""
+    logger.info("[add_session_to_week] user_id=%s, week_start=%s", user_id, week_start)
+    session_data = json.loads(session)
+    start = date.fromisoformat(week_start)
+    uid = uuid.UUID(user_id)
+
+    day_name = session_data.get("day", "").lower()
+    offset = _DAY_OFFSETS.get(day_name)
+    if offset is None:
+        return {"error": f"Invalid day: {session_data.get('day')}"}
+    scheduled = start + timedelta(days=offset)
+
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            # Find or create a plan for this week
+            plan_row = await conn.fetchrow(
+                "SELECT id FROM workout_plans WHERE user_id = $1 AND week_start = $2",
+                uid, start,
+            )
+            if plan_row:
+                plan_id = plan_row["id"]
+            else:
+                plan_id = uuid.uuid4()
+                await conn.execute(
+                    """INSERT INTO workout_plans (id, user_id, week_start, plan_json)
+                       VALUES ($1, $2, $3, $4)""",
+                    plan_id, uid, start, json.dumps({"sessions": []}),
+                )
+
+            # Delete any existing session on that day for this user in this week
+            await conn.execute(
+                """DELETE FROM workout_sessions
+                   WHERE user_id = $1 AND scheduled_date = $2 AND plan_id = $3""",
+                uid, scheduled, plan_id,
+            )
+
+            session_id = uuid.uuid4()
+            await conn.execute(
+                """INSERT INTO workout_sessions
+                   (id, user_id, plan_id, scheduled_date, title, exercises)
+                   VALUES ($1, $2, $3, $4, $5, $6)""",
+                session_id, uid, plan_id, scheduled,
+                session_data.get("title", "Workout"),
+                json.dumps(session_data.get("exercises", [])),
+            )
+
+    result = {
+        "session_id": str(session_id),
+        "scheduled_date": scheduled.isoformat(),
+        "message": f"Session added for {session_data.get('day')} ({scheduled.isoformat()}).",
+    }
+    logger.info("[add_session_to_week] done: %s", result)
+    return result
+
+
+@mcp.tool()
+async def update_session(user_id: str, session_id: str, updates: str) -> dict:
+    """Update an existing workout session's title or exercises.
+    updates is a JSON string: {"title": "...", "exercises": [...]}"""
+    logger.info("[update_session] user_id=%s, session_id=%s", user_id, session_id)
+    updates_data = json.loads(updates)
+    uid = uuid.UUID(user_id)
+    sid = uuid.UUID(session_id)
+
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        # Verify session belongs to user
+        row = await conn.fetchrow(
+            "SELECT id FROM workout_sessions WHERE id = $1 AND user_id = $2",
+            sid, uid,
+        )
+        if not row:
+            return {"error": "Session not found or does not belong to user"}
+
+        set_clauses = []
+        params: list = []
+        param_idx = 1
+
+        if "title" in updates_data:
+            param_idx += 1
+            set_clauses.append(f"title = ${param_idx}")
+            params.append(updates_data["title"])
+
+        if "exercises" in updates_data:
+            param_idx += 1
+            set_clauses.append(f"exercises = ${param_idx}")
+            params.append(json.dumps(updates_data["exercises"]))
+
+        if not set_clauses:
+            return {"error": "No valid fields to update. Provide 'title' and/or 'exercises'."}
+
+        query = f"UPDATE workout_sessions SET {', '.join(set_clauses)} WHERE id = $1"
+        await conn.execute(query, sid, *params)
+
+    result = {"session_id": session_id, "message": "Session updated successfully."}
+    logger.info("[update_session] done: %s", result)
     return result
 
 

@@ -2,8 +2,9 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Linking, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { IconButton, Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { format, parseISO } from 'date-fns';
-import { ScreenContainer, Card, CardHeader, CardContent, Badge } from '../../components/ui';
+import { ScreenContainer, Card, CardHeader, CardContent, Badge, Button } from '../../components/ui';
 import { useWorkoutStore } from '../../stores/workoutStore';
 import { colors, spacing, radii } from '../../theme';
 import type { WorkoutSession, ExerciseInSession, SessionStatus } from '../../types';
@@ -24,7 +25,10 @@ const STATUS_LABEL: Record<SessionStatus, string> = {
 
 function SessionCard({ session }: { session: WorkoutSession }) {
   const [expanded, setExpanded] = useState(false);
+  const router = useRouter();
   const dayLabel = format(parseISO(session.scheduledDate), 'EEEE');
+  const isScheduled = session.status === 'scheduled';
+  const isInProgress = session.status === 'in_progress';
 
   return (
     <Card style={styles.sessionCard}>
@@ -84,6 +88,16 @@ function SessionCard({ session }: { session: WorkoutSession }) {
               )}
             </View>
           ))}
+          {(isScheduled || isInProgress) && (
+            <View style={styles.startButtonRow}>
+              <Button
+                onPress={() => router.push(`/workout/${session.id}`)}
+                size="small"
+              >
+                {isInProgress ? 'Resume Workout' : 'Start Workout'}
+              </Button>
+            </View>
+          )}
         </CardContent>
       )}
     </Card>
@@ -228,5 +242,9 @@ const styles = StyleSheet.create({
   emptyText: {
     color: colors.textMuted,
     textAlign: 'center',
+  },
+  startButtonRow: {
+    paddingTop: spacing.base,
+    alignItems: 'center',
   },
 });
