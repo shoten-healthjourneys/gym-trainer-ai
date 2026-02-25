@@ -4,6 +4,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { IconButton, Text } from 'react-native-paper';
@@ -20,6 +21,8 @@ export default function ChatScreen() {
   const error = useChatStore((s) => s.error);
   const sendMessage = useChatStore((s) => s.sendMessage);
   const newChat = useChatStore((s) => s.newChat);
+  const lastFailedMessage = useChatStore((s) => s.lastFailedMessage);
+  const retryLastMessage = useChatStore((s) => s.retryLastMessage);
   const clearError = useChatStore((s) => s.clearError);
 
   const [input, setInput] = useState('');
@@ -103,6 +106,11 @@ export default function ChatScreen() {
             <Text variant="labelSmall" style={styles.errorText}>
               {error}
             </Text>
+            {lastFailedMessage ? (
+              <TouchableOpacity onPress={retryLastMessage} style={styles.retryButton}>
+                <Text variant="labelSmall" style={styles.retryText}>Retry</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : null}
 
@@ -167,6 +175,19 @@ const styles = StyleSheet.create({
     backgroundColor: colors.destructive,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.base,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  retryButton: {
+    backgroundColor: colors.textPrimary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: 4,
+  },
+  retryText: {
+    color: colors.destructive,
+    fontWeight: '600',
   },
   errorText: {
     color: colors.textPrimary,

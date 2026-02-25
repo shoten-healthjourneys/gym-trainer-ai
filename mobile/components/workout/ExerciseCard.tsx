@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Snackbar, Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -7,6 +7,7 @@ import { colors, spacing } from '../../theme';
 import { useWorkoutStore } from '../../stores/workoutStore';
 import { requestMicPermission } from '../../services/voice';
 import { SetLogger } from './SetLogger';
+import { RestTimer } from './RestTimer';
 import { VoiceButton } from './VoiceButton';
 import { ManualSetDialog } from './ManualSetDialog';
 import type { ExerciseInSession } from '../../types';
@@ -21,7 +22,9 @@ export function ExerciseCard({ exercise, sessionId }: ExerciseCardProps) {
   const [addDialogVisible, setAddDialogVisible] = useState(false);
   const [snackMessage, setSnackMessage] = useState('');
   const [micAllowed, setMicAllowed] = useState(false);
+  const [restActive, setRestActive] = useState(false);
   const logs = useWorkoutStore((s) => s.exerciseLogs[exercise.name] ?? []);
+  const prevLogsLength = useRef(logs.length);
   const logSet = useWorkoutStore((s) => s.logSet);
   const fetchExerciseLogs = useWorkoutStore((s) => s.fetchExerciseLogs);
 
@@ -32,6 +35,11 @@ export function ExerciseCard({ exercise, sessionId }: ExerciseCardProps) {
   useEffect(() => {
     requestMicPermission().then(setMicAllowed);
   }, []);
+
+  useEffect(() => {
+    if (logs.length > prevLogsLength.current) setRestActive(true);
+    prevLogsLength.current = logs.length;
+  }, [logs.length]);
 
   const handleManualAdd = useCallback(
     (data: { weightKg: number; reps: number; rpe?: number }) => {
@@ -78,6 +86,13 @@ export function ExerciseCard({ exercise, sessionId }: ExerciseCardProps) {
             sessionId={sessionId}
             logs={logs}
           />
+          {restActive && (
+            <RestTimer
+              durationSeconds={90}
+              onDismiss={() => setRestActive(false)}
+              onComplete={() => setRestActive(false)}
+            />
+          )}
           <View style={styles.inputRow}>
             {micAllowed && (
               <VoiceButton

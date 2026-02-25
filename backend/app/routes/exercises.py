@@ -177,3 +177,93 @@ async def delete_exercise_log(
         raise HTTPException(status_code=404, detail="Exercise log not found")
 
     await execute(conn, "DELETE FROM exercise_logs WHERE id = $1 AND user_id = $2", log_id, user_id)
+
+
+@router.get("/names")
+async def list_logged_exercise_names(
+    user: dict = Depends(get_current_user),
+    conn=Depends(get_db),
+):
+    user_id = uuid.UUID(user["user_id"])
+    rows = await fetch_all(
+        conn,
+        "SELECT DISTINCT exercise_name FROM exercise_logs WHERE user_id = $1 ORDER BY exercise_name",
+        user_id,
+    )
+    return [r["exercise_name"] for r in rows]
+
+
+@router.get("/history")
+async def exercise_history(
+    exercise_name: str = Query(...),
+    days: int = Query(default=90),
+    user: dict = Depends(get_current_user),
+    conn=Depends(get_db),
+):
+    user_id = uuid.UUID(user["user_id"])
+    resolved_name = await resolve_exercise_name(conn, exercise_name)
+
+    rows = await fetch_all(
+        conn,
+        """SELECT DATE(logged_at) AS session_date,
+                  MAX(weight_kg) AS max_weight,
+                  MAX(reps) AS best_reps,
+                  COUNT(*) AS total_sets
+           FROM exercise_logs
+           WHERE user_id = $1 AND exercise_name = $2
+                 AND logged_at >= NOW() - INTERVAL '1 day' * $3
+           GROUP BY DATE(logged_at)
+           ORDER BY session_date""",
+        user_id, resolved_name, days,
+    )
+    return {
+        "exerciseName": resolved_name,
+        "dataPoints": [
+            {
+                "date": r["session_date"].isoformat(),
+                "maxWeight": float(r["max_weight"]) if r["max_weight"] is not None else 0,
+                "bestReps": r["best_reps"],
+                "totalSets": r["total_sets"],
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.get("/history/detail")
+async def exercise_history_detail(
+    exercise_name: str = Query(...),
+    days: int = Query(default=90),
+    user: dict = Depends(get_current_user),
+    conn=Depends(get_db),
+):
+    user_id = uuid.UUID(user["user_id"])
+    resolved_name = await resolve_exercise_name(conn, exercise_name)
+
+    rows = await fetch_all(
+        conn,
+        """SELECT DATE(logged_at) AS session_date, set_number, weight_kg, reps, rpe
+           FROM exercise_logs
+           WHERE user_id = $1 AND exercise_name = $2
+                 AND logged_at >= NOW() - INTERVAL '1 day' * $3
+           ORDER BY session_date, set_number""",
+        user_id, resolved_name, days,
+    )
+
+    from itertools import groupby
+    from operator import itemgetter
+
+    result = []
+    for date_val, group in groupby(rows, key=itemgetter("session_date")):
+        sets = [
+            {
+                "setNumber": r["set_number"],
+                "weightKg": float(r["weight_kg"]) if r["weight_kg"] is not None else 0,
+                "reps": r["reps"],
+                "rpe": float(r["rpe"]) if r["rpe"] is not None else None,
+            }
+            for r in group
+        ]
+        result.append({"date": date_val.isoformat(), "sets": sets})
+
+    return result

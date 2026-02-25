@@ -7,7 +7,9 @@ interface ChatState {
   messages: ChatDisplayMessage[];
   isStreaming: boolean;
   error: string | null;
+  lastFailedMessage: string | null;
   sendMessage: (text: string) => Promise<void>;
+  retryLastMessage: () => Promise<void>;
   newChat: () => Promise<void>;
   clearMessages: () => void;
   clearError: () => void;
@@ -17,6 +19,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   isStreaming: false,
   error: null,
+  lastFailedMessage: null,
 
   sendMessage: async (text: string) => {
     const userMsg: ChatDisplayMessage = {
@@ -38,6 +41,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       messages: [...state.messages, userMsg, assistantMsg],
       isStreaming: true,
       error: null,
+      lastFailedMessage: null,
     }));
 
     try {
@@ -92,7 +96,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }));
       }
     } catch (e) {
-      set({ error: e instanceof Error ? e.message : 'Failed to send message' });
+      set({
+        error: e instanceof Error ? e.message : 'Failed to send message',
+        lastFailedMessage: text,
+      });
     } finally {
       set((state) => {
         const msgs = state.messages;
@@ -107,6 +114,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
         return { isStreaming: false };
       });
     }
+  },
+
+  retryLastMessage: async () => {
+    const { lastFailedMessage, messages } = get();
+    if (!lastFailedMessage) return;
+
+    // Remove last failed assistant message
+    const filtered = messages.filter((m, i) => {
+      if (i === messages.length - 1 && m.role === 'assistant') return false;
+      return true;
+    });
+
+    set({ messages: filtered, error: null, lastFailedMessage: null });
+    await get().sendMessage(lastFailedMessage);
   },
 
   newChat: async () => {
