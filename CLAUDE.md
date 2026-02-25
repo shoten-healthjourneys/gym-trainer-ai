@@ -55,6 +55,23 @@ Other agents should coordinate via lead before modifying types.
 - TypeScript: `cd mobile && npx tsc --noEmit`
 - Backend tests: `cd backend && pytest`
 
+## Deployment
+
+### Docker builds for Azure
+**Always use `--platform linux/amd64` when building Docker images for Azure Container Apps.**
+Local builds default to ARM (Apple Silicon) which Azure rejects. Example:
+```bash
+docker build --platform linux/amd64 -t gymtraineracr.azurecr.io/gym-trainer-api:latest backend/
+```
+
+### Azure PostgreSQL extensions
+Extensions must be allow-listed before use. Currently allow-listed: `pg_trgm`.
+To allow-list an extension:
+```bash
+az postgres flexible-server parameter set --resource-group gym-trainer-rg \
+  --server-name gym-trainer-pg --name azure.extensions --value pg_trgm
+```
+
 ## Testing
 - Backend: pytest with httpx for route tests, MCP tool tests
 - Mobile unit: Jest for stores, services, parsing logic
