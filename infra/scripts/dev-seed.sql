@@ -6,7 +6,7 @@ VALUES (
     'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
     'Shoten',
     'shotend@gmail.com',
-    '$2b$12$C1vfvXSolWbLSuu6xowxT.TvpB6FbkxhwJzeDzRSjKd6254hLCRni',
+    '$2b$12$fcrVDUlV9R/SiwmrP.T2Guusad1v.w7gmp7PhVS5o2uGwcS282MZa',
     'intermediate',
     '["hypertrophy", "strength"]',
     4,
