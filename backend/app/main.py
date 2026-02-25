@@ -1,5 +1,4 @@
 import logging
-import uuid
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -101,24 +100,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     async with app.state.pool.acquire() as conn:
         await conn.execute(_SCHEMA_SQL)
         await seed_exercises(conn)
-        # Seed dev user if not exists
-        exists = await conn.fetchval(
-            "SELECT 1 FROM profiles WHERE email = $1", "shotend@gmail.com"
-        )
-        if not exists:
-            await conn.execute(
-                """INSERT INTO profiles (id, display_name, email, password_hash,
-                   experience_level, training_goals, available_days, preferred_unit)
-                   VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)""",
-                uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890"),
-                "Shoten",
-                "shotend@gmail.com",
-                "$2b$12$C1vfvXSolWbLSuu6xowxT.TvpB6FbkxhwJzeDzRSjKd6254hLCRni",
-                "intermediate",
-                '["hypertrophy", "strength"]',
-                4,
-                "kg",
-            )
+        # Dev user seeding moved to infra/scripts/dev-seed.sql
+        # Run manually for local dev: psql -f infra/scripts/dev-seed.sql
     agent, mcp_tool = await create_agent()
     app.state.agent = agent
     app.state.mcp_tool = mcp_tool
