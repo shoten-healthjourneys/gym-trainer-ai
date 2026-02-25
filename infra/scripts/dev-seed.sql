@@ -1,5 +1,5 @@
--- Dev seed data — Shoten's user for local development
--- Email: shotend@gmail.com / Password: Sosho144@
+-- Dev seed data — local development user
+-- Password: set in your local .env or use: python -c "import bcrypt; print(bcrypt.hashpw(b'YOUR_PASSWORD', bcrypt.gensalt()).decode())"
 
 INSERT INTO profiles (id, display_name, email, password_hash, experience_level, training_goals, available_days, preferred_unit)
 VALUES (
