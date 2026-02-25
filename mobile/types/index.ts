@@ -132,6 +132,31 @@ export interface ChatDisplayMessage {
   isStreaming?: boolean;
 }
 
+// ===== Progress =====
+export interface ProgressDataPoint {
+  date: string;
+  maxWeight: number;
+  bestReps: number;
+  totalSets: number;
+}
+
+export interface ExerciseProgressResponse {
+  exerciseName: string;
+  dataPoints: ProgressDataPoint[];
+}
+
+export interface HistorySetDetail {
+  setNumber: number;
+  weightKg: number;
+  reps: number;
+  rpe?: number;
+}
+
+export interface HistoryDayDetail {
+  date: string;
+  sets: HistorySetDetail[];
+}
+
 // ===== API =====
 export interface ApiResponse<T> {
   data: T;

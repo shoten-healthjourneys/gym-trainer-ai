@@ -11,6 +11,9 @@ const TOOL_LABELS: Record<string, string> = {
   get_planned_workouts: 'Checking your schedule',
   search_youtube: 'Finding exercise videos',
   save_workout_plan: 'Saving your plan',
+  add_session_to_week: 'Updating your schedule',
+  update_session: 'Modifying session',
+  search_exercises: 'Looking up exercises',
 };
 
 function getToolLabel(name: string): string {

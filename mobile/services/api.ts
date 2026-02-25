@@ -125,3 +125,15 @@ export function getSessions(weekStart: string): Promise<Session[]> {
 export function getSession(id: string): Promise<Session> {
   return get<Session>(`/api/sessions/${encodeURIComponent(id)}`);
 }
+
+export async function isApiReachable(): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const response = await fetch(`${API_URL}/health`, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
