@@ -57,11 +57,37 @@ Other agents should coordinate via lead before modifying types.
 
 ## Deployment
 
+### Mobile Preflight (MUST run before EAS builds)
+**Before submitting an EAS build, always run the preflight script:**
+```bash
+cd mobile && npm run preflight
+```
+This checks expo-doctor, peer dependencies, TypeScript, and runs `expo prebuild --clean`
+to catch Gradle/Kotlin/native config issues locally (~30 seconds) instead of discovering
+them after 20 minutes in the EAS build queue.
+
+**When modifying mobile dependencies or native config (app.json plugins, SDK upgrades,
+Kotlin version, newArchEnabled), always run preflight before committing.**
+
+### Mobile EAS Build
+```bash
+cd mobile && eas build --profile preview --platform android --non-interactive
+```
+- Preview profile builds an APK for internal distribution
+- Backend URL is set via `eas.json` preview env: `EXPO_PUBLIC_API_URL`
+- Backend live URL: `https://gym-trainer-api.bluehill-f327b734.uksouth.azurecontainerapps.io`
+
 ### Docker builds for Azure
 **Always use `--platform linux/amd64` when building Docker images for Azure Container Apps.**
 Local builds default to ARM (Apple Silicon) which Azure rejects. Example:
 ```bash
 docker build --platform linux/amd64 -t gymtraineracr.azurecr.io/gym-trainer-api:latest backend/
+```
+
+### Backend deploy to Azure
+```bash
+export ACR_NAME=gymtraineracr ACA_NAME=gym-trainer-api RESOURCE_GROUP=gym-trainer-rg
+./infra/scripts/deploy.sh
 ```
 
 ### Azure PostgreSQL extensions
@@ -72,9 +98,16 @@ az postgres flexible-server parameter set --resource-group gym-trainer-rg \
   --server-name gym-trainer-pg --name azure.extensions --value pg_trgm
 ```
 
+### Expo SDK / React Native Upgrade Notes
+- Kotlin version is set in `mobile/app.json` via `expo-build-properties` plugin
+- `newArchEnabled` must be `true` (required by react-native-reanimated 4.x+)
+- `react` and `react-dom` versions must match (both pinned, excluded from expo install --check)
+- When upgrading Expo SDK, check KSP supported Kotlin versions at https://github.com/google/ksp/releases
+
 ## Testing
 - Backend: pytest with httpx for route tests, MCP tool tests
 - Mobile unit: Jest for stores, services, parsing logic
 - Mobile component: React Native Testing Library for UI
 - TypeScript: strict mode, `tsc --noEmit` must pass
 - Lint: ESLint must pass
+- **Mobile preflight:** `cd mobile && npm run preflight` (run before EAS builds)
