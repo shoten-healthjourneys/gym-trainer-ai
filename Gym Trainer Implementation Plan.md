@@ -22,7 +22,7 @@ A personal AI-powered gym trainer app for Android. Chat with a Claude-powered ag
 | **Voice (primary)** | Android native STT (TBD — `@react-native-voice/voice` removed due to AndroidX conflicts) |
 | **Voice (fallback)** | Deepgram streaming API |
 | **Design System** | React Native Paper (Material Design 3) |
-| **Charts** | `react-native-chart-kit` or `victory-native` |
+| **Charts** | `react-native-chart-kit` (may need replacing — no New Architecture support) |
 | **State** | Zustand |
 | **Navigation** | Expo Router |
 | **Infrastructure** | Terraform (azurerm provider) |
@@ -1138,9 +1138,11 @@ All infrastructure provisioned via Terraform and verified:
 4. **Container App failed provisioning state**: Previous failed apply created broken resource → Deleted via `az containerapp delete`, re-applied
 5. **Docker platform mismatch**: ARM image on Apple Silicon → Rebuilt with `--platform linux/amd64`
 
-##### EAS Build — ✅ SUCCEEDED (Build #6)
+##### EAS Build — ✅ SUCCEEDED
 
-Multiple build failures resolved iteratively:
+Multiple build failures resolved iteratively across SDK 52 and SDK 54:
+
+**SDK 52 builds (Phase 1.5):**
 
 | Build | Error | Fix Applied |
 |---|---|---|
@@ -1148,21 +1150,33 @@ Multiple build failures resolved iteratively:
 | #2 | Same Kotlin error | `npx expo install --fix` to update react-native 0.76.5→0.76.9, removed stale android/ folder |
 | #3 | `processReleaseMainManifest FAILED` — AndroidX vs android.support manifest conflict | Added `enableJetifier: true` to expo-build-properties |
 | #4 | Same manifest error persisted | Set `newArchEnabled: false` in app.json |
-| #5 | Same manifest error — `com.android.support:support-compat:28.0.0` conflicting with `androidx.core:core:1.13.1` | **Removed `@react-native-voice/voice`** (sole source of old support libs, not imported anywhere). Also replaced `react-native-vector-icons` → `@expo/vector-icons` (bundled with Expo, no native compilation). Also attempted config plugin `withAndroidManifestFix` but it failed to resolve `@expo/config-plugins` from global EAS CLI — removed it. |
+| #5 | Same manifest error — `com.android.support:support-compat:28.0.0` conflicting with `androidx.core:core:1.13.1` | **Removed `@react-native-voice/voice`** (sole source of old support libs, not imported anywhere). Also replaced `react-native-vector-icons` → `@expo/vector-icons` (bundled with Expo, no native compilation). |
 | #6 | ✅ **BUILD SUCCEEDED** | All fixes combined resolved the issue. APK ready for download. |
+
+**SDK 54 builds (2026-02-25):**
+
+| Build | Error | Fix Applied |
+|---|---|---|
+| #7 | `npm ci` failed — `react-dom@19.2.4` requires `react@^19.2.4` but project had `react@19.1.0` | Added `react-dom` as explicit dependency, added npm `overrides` to pin react ecosystem to 19.1.0 |
+| #8 | KSP error — `Can't find KSP version for Kotlin 1.9.25` | Bumped `kotlinVersion` to `2.0.21` in app.json expo-build-properties |
+| #9 | `react-native-reanimated:assertNewArchitectureEnabledTask FAILED` | Set `newArchEnabled: true` (required by reanimated 4.x) |
+| #10 | Build succeeded but **app crashed on open** — `react@19.2.4` vs `react-native-renderer@19.1.0` version mismatch | Pinned `react`, `react-dom`, `react-test-renderer` all to 19.1.0 via npm overrides |
+| #11 | ✅ **BUILD SUCCEEDED + APP RUNS** | All SDK 54 fixes combined |
+
+**Key lesson:** Added `mobile/scripts/preflight.sh` (`npm run preflight`) to catch dependency, TypeScript, and native config issues locally in ~30 seconds instead of discovering them after 20 minutes in the EAS build queue.
 
 ##### Current app.json (EAS build config)
 
 ```json
 {
   "expo": {
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "plugins": [
       "expo-router",
       "expo-secure-store",
       ["expo-build-properties", {
         "android": {
-          "kotlinVersion": "1.9.25",
+          "kotlinVersion": "2.0.21",
           "enableJetifier": true
         }
       }]
@@ -1590,78 +1604,78 @@ eas update --branch production --message "Fixed chat scroll bug"
 
 **OTA updates** are the killer feature — once a build is installed, JS/asset changes can be pushed instantly without going through the Play Store. Users get the update next app launch. Only native module changes require a new build.
 
-### GitHub Actions CI
+### GitHub Actions CI/CD
 
-```yaml
-# .github/workflows/ci.yml
-name: CI
-on:
-  push:
-    branches: [main]
-  pull_request:
+The pipeline uses path-based filtering (`dorny/paths-filter`) to only deploy what changed. See `.github/workflows/ci.yml` for the full workflow.
 
-jobs:
-  lint-and-test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+**Triggers:**
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with: { node-version: 20 }
+| Trigger | What runs |
+|---------|-----------|
+| **PR** | expo-doctor, TypeScript, ESLint, Jest, pytest |
+| **Push to main** (backend/ changed) | Above + Docker build → ACR push → Container App update |
+| **Push to main** (mobile/ changed) | Above + EAS preview APK build |
+| **Push to main** (both changed) | Above + backend deploy AND preview build in parallel |
+| **Git tag `v*`** | Above + EAS production app-bundle for Play Store |
 
-      - name: Install deps
-        run: cd mobile && npm ci
+**Required GitHub Secrets:**
 
-      - name: TypeScript check
-        run: cd mobile && npx tsc --noEmit
+| Secret | Purpose |
+|--------|---------|
+| `AZURE_CREDENTIALS` | Service principal JSON for Azure deployment (contributor on gym-trainer-rg) |
+| `EXPO_TOKEN` | EAS access token for building APKs |
 
-      - name: Lint
-        run: cd mobile && npx eslint .
+### Development Workflow
 
-      - name: Unit tests
-        run: cd mobile && npx jest --coverage
+All feature work goes through feature branches and PRs. Never push directly to main.
 
-      - name: Backend tests
-        run: |
-          cd backend
-          pip install -r requirements.txt
-          pytest tests/ -v
-
-  preview-build:
-    needs: lint-and-test
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: expo/expo-github-action@v8
-        with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
-      - run: cd mobile && npm ci
-      - run: cd mobile && eas build --profile preview --platform android --non-interactive
+```
+1. git checkout -b feat/<description>
+2. Implement feature
+3. Run local checks:
+   └─ cd mobile && npm run preflight  (if mobile changes)
+   └─ cd backend && pytest            (if backend changes)
+4. git push → open PR
+   └─ GitHub Actions validates (expo-doctor, tsc, eslint, jest, pytest)
+5. Shoten reviews and merges to main
+6. GitHub Actions auto-deploys only what changed:
+   └─ backend/ changed → Docker build → ACR → Azure Container App
+   └─ mobile/ changed → EAS preview APK build
 ```
 
-This runs lint + tests on every PR, and triggers a preview APK build on merge to main.
+### Mobile Preflight
+
+**Always run before committing mobile dependency or native config changes:**
+
+```bash
+cd mobile && npm run preflight
+```
+
+Checks expo-doctor, peer dependencies, TypeScript, and native prebuild (~30 seconds locally) instead of discovering Gradle/Kotlin/native config issues after 20 minutes in the EAS build queue.
 
 ### Deployment Path
 
 ```
-Local dev (dev build + hot reload)
+Feature branch (local dev + hot reload)
     │
-    ├─ git push → GitHub Actions
+    ├─ git push → PR → GitHub Actions
+    │     ├─ expo-doctor
     │     ├─ TypeScript check
     │     ├─ ESLint
     │     ├─ Jest unit tests
-    │     ├─ pytest backend tests
-    │     └─ (on main merge) → eas build --profile preview
+    │     └─ pytest backend tests
+    │
+    ├─ PR merged to main → auto-deploy (only what changed)
+    │     ├─ backend/ changed → Docker → ACR → Azure Container App
+    │     └─ mobile/ changed → EAS preview APK
     │
     ├─ Preview APK → share download link with testers
     │
-    ├─ OTA updates → eas update (JS-only fixes, instant)
+    ├─ OTA updates → eas update (JS-only changes, instant)
     │
     └─ Play Store release
-          ├─ eas build --profile production
+          ├─ git tag v1.0.0 && git push --tags
+          ├─ GitHub Actions → eas build --profile production
           ├─ eas submit → internal test track
           └─ Promote to production in Play Console
 ```
