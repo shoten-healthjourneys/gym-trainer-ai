@@ -20,7 +20,7 @@ echo "==> Logging in to ACR: ${ACR_NAME}"
 az acr login --name "${ACR_NAME}"
 
 echo "==> Building Docker image: ${IMAGE_NAME}"
-docker build -t "${IMAGE_NAME}" ../backend/
+docker build --platform linux/amd64 -t "${IMAGE_NAME}" ../backend/
 
 echo "==> Pushing image to ACR"
 docker push "${IMAGE_NAME}"
