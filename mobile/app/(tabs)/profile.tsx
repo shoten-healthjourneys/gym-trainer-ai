@@ -8,6 +8,7 @@ import {
   ScreenContainer,
   Section,
   SegmentedButtons,
+  TextInput,
 } from '../../components/ui';
 import { useProfileStore } from '../../stores/profileStore';
 import { useAuthStore } from '../../stores/authStore';
@@ -49,6 +50,7 @@ export default function ProfileScreen() {
   const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel | ''>('');
   const [selectedDays, setSelectedDays] = useState<boolean[]>(new Array(7).fill(false));
   const [preferredUnit, setPreferredUnit] = useState<'kg' | 'lbs'>('kg');
+  const [trainingObjective, setTrainingObjective] = useState('');
   const [saving, setSaving] = useState(false);
   const [successVisible, setSuccessVisible] = useState(false);
 
@@ -61,6 +63,7 @@ export default function ProfileScreen() {
       setSelectedGoals(profile.trainingGoals ?? []);
       setExperienceLevel(profile.experienceLevel ?? '');
       setPreferredUnit(profile.preferredUnit ?? 'kg');
+      setTrainingObjective(profile.trainingObjective ?? '');
 
       if (profile.availableDays != null) {
         const days = new Array<boolean>(7).fill(false);
@@ -97,12 +100,13 @@ export default function ProfileScreen() {
         experienceLevel: experienceLevel as ExperienceLevel,
         availableDays: selectedDays.filter(Boolean).length,
         preferredUnit,
+        trainingObjective: trainingObjective || null,
       });
       setSuccessVisible(true);
     } finally {
       setSaving(false);
     }
-  }, [canSave, selectedGoals, experienceLevel, selectedDays, preferredUnit, updateProfile]);
+  }, [canSave, selectedGoals, experienceLevel, selectedDays, preferredUnit, trainingObjective, updateProfile]);
 
   if (loading && !profile && !saving) {
     return (
@@ -144,6 +148,18 @@ export default function ProfileScreen() {
             </Chip>
           ))}
         </View>
+      </Section>
+
+      <Section title="Training Objective">
+        <TextInput
+          label="Your specific goal"
+          placeholder="e.g. I want to do 10 pullups in 6 months"
+          value={trainingObjective}
+          onChangeText={setTrainingObjective}
+          multiline
+          maxLength={1000}
+          numberOfLines={3}
+        />
       </Section>
 
       <Section title="Experience Level">

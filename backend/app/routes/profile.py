@@ -26,6 +26,7 @@ class ProfileResponse(BaseModel):
     experience_level: str | None = None
     available_days: int | None = None
     preferred_unit: str = "kg"
+    training_objective: str | None = None
     created_at: str
     updated_at: str
 
@@ -40,6 +41,7 @@ class ProfileUpdate(BaseModel):
     experience_level: str | None = None
     available_days: int | None = None
     preferred_unit: str | None = None
+    training_objective: str | None = None
 
 
 def _row_to_response(row: dict) -> ProfileResponse:
@@ -51,6 +53,7 @@ def _row_to_response(row: dict) -> ProfileResponse:
         experience_level=row.get("experience_level"),
         available_days=row.get("available_days"),
         preferred_unit=row.get("preferred_unit", "kg"),
+        training_objective=row.get("training_objective"),
         created_at=row["created_at"].isoformat() if isinstance(row["created_at"], datetime) else str(row["created_at"]),
         updated_at=row["updated_at"].isoformat() if isinstance(row["updated_at"], datetime) else str(row["updated_at"]),
     )
@@ -104,6 +107,11 @@ async def update_profile(
         idx += 1
         updates.append(f"preferred_unit = ${idx}")
         values.append(body.preferred_unit)
+
+    if body.training_objective is not None:
+        idx += 1
+        updates.append(f"training_objective = ${idx}")
+        values.append(body.training_objective)
 
     if not updates:
         raise HTTPException(

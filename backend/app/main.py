@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     experience_level VARCHAR(20),
     available_days INT,
     preferred_unit VARCHAR(5) DEFAULT 'kg',
+    training_objective VARCHAR(1000),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -89,6 +90,8 @@ CREATE INDEX IF NOT EXISTS idx_exercises_name_trgm ON exercises USING gin (name 
 CREATE INDEX IF NOT EXISTS idx_exercise_logs_lookup ON exercise_logs(user_id, exercise_name, logged_at);
 CREATE INDEX IF NOT EXISTS idx_sessions_schedule ON workout_sessions(user_id, scheduled_date);
 CREATE INDEX IF NOT EXISTS idx_chat_history ON chat_messages(user_id, created_at);
+
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS training_objective VARCHAR(1000);
 """
 
 
