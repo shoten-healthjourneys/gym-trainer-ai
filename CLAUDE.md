@@ -13,6 +13,29 @@ Detailed implementation plan can be found here - Gym Trainer Implementation Plan
 - `backend/` — Python FastAPI + MCP tool server + Agent Framework
 - `mobile/` — React Native Expo (Android only)
 
+## Development Workflow
+Claude must follow this workflow for all feature work:
+
+1. **Create a feature branch** — never push directly to main
+   ```bash
+   git checkout -b feat/<short-description>
+   ```
+2. **Implement the feature** with commits on the branch
+3. **Run local checks before pushing:**
+   - `cd mobile && npm run preflight` (if mobile changes)
+   - `cd backend && pytest` (if backend changes)
+4. **Push the branch and open a PR** — CI runs automatically on PRs
+5. **Shoten reviews and merges the PR to main**
+6. **On merge to main, GitHub Actions automatically deploys only what changed:**
+   - `backend/**` changed → deploys backend to Azure (Docker → ACR → Container App)
+   - `mobile/**` changed → builds preview APK via EAS
+   - Both changed → both deploy in parallel
+   - Neither changed (e.g. docs only) → no deploy
+7. **For Play Store releases:** Shoten tags with `git tag v*` and pushes
+
+**Never push directly to main.** All changes go through PRs so CI validates
+before anything deploys. Main = production.
+
 ## Conventions
 - TypeScript strict mode in mobile/
 - Python 3.12+ with type hints in backend/
@@ -101,7 +124,9 @@ az postgres flexible-server parameter set --resource-group gym-trainer-rg \
 ### Expo SDK / React Native Upgrade Notes
 - Kotlin version is set in `mobile/app.json` via `expo-build-properties` plugin
 - `newArchEnabled` must be `true` (required by react-native-reanimated 4.x+)
-- `react` and `react-dom` versions must match (both pinned, excluded from expo install --check)
+- `react` version must match `react-native-renderer` (bundled in react-native). Use npm overrides
+  to pin `react-dom` and `react-test-renderer` to the same version. Check with `npm ls react`
+- `react` and `react-dom` are excluded from expo install --check (managed via overrides)
 - When upgrading Expo SDK, check KSP supported Kotlin versions at https://github.com/google/ksp/releases
 
 ## Testing

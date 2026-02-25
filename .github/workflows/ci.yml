@@ -7,11 +7,31 @@ on:
   pull_request:
 
 jobs:
+  # Detect which parts of the codebase changed
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      mobile: ${{ steps.filter.outputs.mobile }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'backend/Dockerfile'
+            mobile:
+              - 'mobile/**'
+
   lint-and-test:
+    needs: changes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      # --- Mobile checks (always run - fast enough) ---
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -32,6 +52,7 @@ jobs:
       - name: Unit tests
         run: cd mobile && npx jest --coverage
 
+      # --- Backend checks (always run - fast enough) ---
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -48,8 +69,8 @@ jobs:
           pytest tests/ -v
 
   deploy-backend:
-    needs: lint-and-test
-    if: github.ref == 'refs/heads/main'
+    needs: [lint-and-test, changes]
+    if: github.ref == 'refs/heads/main' && needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -82,8 +103,8 @@ jobs:
             --image gymtraineracr.azurecr.io/gym-trainer-api:${IMAGE_TAG}
 
   preview-build:
-    needs: lint-and-test
-    if: github.ref == 'refs/heads/main'
+    needs: [lint-and-test, changes]
+    if: github.ref == 'refs/heads/main' && needs.changes.outputs.mobile == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
