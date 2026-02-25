@@ -30,6 +30,7 @@ export interface Profile {
   experienceLevel: ExperienceLevel | null;
   availableDays: number | null;
   preferredUnit: 'kg' | 'lbs';
+  trainingObjective: string | null;
   createdAt: string;
   updatedAt: string;
 }

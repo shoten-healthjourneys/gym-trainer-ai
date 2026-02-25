@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     JWT_SECRET: str = secrets.token_urlsafe(32)
     CORS_ORIGINS: list[str] = ["*"]
 
-    model_config = {"env_file": ".env"}
+    model_config = {"env_file": ".env", "extra": "ignore"}
 
 
 settings = Settings()

@@ -1,10 +1,13 @@
+import asyncio
 import json
 import logging
+import urllib.parse
 import uuid
 from datetime import date, timedelta
 
 import asyncpg
 from fastmcp import FastMCP
+from googleapiclient.discovery import build as build_google_client
 
 from app.config import settings
 from app.exercise_resolver import resolve_exercise_name
@@ -43,7 +46,7 @@ async def get_user_profile(user_id: str) -> dict:
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """SELECT display_name, training_goals, experience_level,
-                      available_days, preferred_unit
+                      available_days, preferred_unit, training_objective
                FROM profiles WHERE id = $1""",
             uuid.UUID(user_id),
         )
@@ -56,9 +59,31 @@ async def get_user_profile(user_id: str) -> dict:
         "experience_level": row["experience_level"],
         "available_days": row["available_days"],
         "preferred_unit": row["preferred_unit"],
+        "training_objective": row["training_objective"],
     }
     logger.info("[get_user_profile] returning: %s", result)
     return result
+
+
+@mcp.tool()
+async def update_training_objective(user_id: str, objective: str) -> dict:
+    """Update a user's training objective — a specific, measurable goal like
+    'I want to do 10 pullups in 6 months' or 'Bench press 100kg by December'.
+    The objective must be 1000 characters or fewer. Pass an empty string to clear it."""
+    logger.info("[update_training_objective] user_id=%s, objective_length=%d", user_id, len(objective))
+    if len(objective) > 1000:
+        return {"error": "Objective must be 1000 characters or fewer."}
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "UPDATE profiles SET training_objective = $1, updated_at = NOW() WHERE id = $2",
+            objective or None,
+            uuid.UUID(user_id),
+        )
+        if result == "UPDATE 0":
+            return {"error": "User not found"}
+    logger.info("[update_training_objective] saved for user %s", user_id)
+    return {"message": "Training objective updated.", "objective": objective or None}
 
 
 @mcp.tool()
@@ -98,13 +123,60 @@ async def get_exercise_history(
     }
 
 
+def _youtube_search(api_key: str, query: str, max_results: int = 1) -> list[dict]:
+    """Synchronous YouTube Data API v3 search (called via run_in_executor)."""
+    youtube = build_google_client("youtube", "v3", developerKey=api_key)
+    response = (
+        youtube.search()
+        .list(
+            q=f"{query} exercise demonstration form",
+            part="snippet",
+            type="video",
+            maxResults=max_results,
+            videoDuration="medium",
+            safeSearch="strict",
+        )
+        .execute()
+    )
+    return [
+        {
+            "url": f"https://www.youtube.com/watch?v={item['id']['videoId']}",
+            "title": item["snippet"]["title"],
+            "thumbnail": item["snippet"]["thumbnails"].get("high", item["snippet"]["thumbnails"]["default"])["url"],
+        }
+        for item in response.get("items", [])
+    ]
+
+
 @mcp.tool()
 async def search_youtube(query: str) -> dict:
     """Search for an exercise demonstration video on YouTube.
-    Currently returns a direct search URL (stub implementation)."""
+    Returns a direct link to a relevant video with title and thumbnail."""
     logger.info("[search_youtube] query=%s", query)
+
+    api_key = settings.YOUTUBE_API_KEY
+    if not api_key:
+        logger.warning("[search_youtube] YOUTUBE_API_KEY not set, falling back to search URL")
+        encoded = urllib.parse.quote_plus(query)
+        return {
+            "url": f"https://www.youtube.com/results?search_query={encoded}",
+            "title": f"{query} - Exercise Demo",
+            "thumbnail": "",
+        }
+
+    try:
+        loop = asyncio.get_running_loop()
+        results = await loop.run_in_executor(None, _youtube_search, api_key, query)
+        if results:
+            logger.info("[search_youtube] found video: %s", results[0]["url"])
+            return results[0]
+        logger.info("[search_youtube] no results from API, falling back to search URL")
+    except Exception:
+        logger.exception("[search_youtube] YouTube API error, falling back to search URL")
+
+    encoded = urllib.parse.quote_plus(query)
     return {
-        "url": f"https://www.youtube.com/results?search_query={query.replace(' ', '+')}",
+        "url": f"https://www.youtube.com/results?search_query={encoded}",
         "title": f"{query} - Exercise Demo",
         "thumbnail": "",
     }
@@ -290,8 +362,8 @@ async def add_session_to_week(user_id: str, week_start: str, session: str) -> di
 
 @mcp.tool()
 async def update_session(user_id: str, session_id: str, updates: str) -> dict:
-    """Update an existing workout session's title or exercises.
-    updates is a JSON string: {"title": "...", "exercises": [...]}"""
+    """Update an existing workout session's title, exercises, or scheduled date.
+    updates is a JSON string: {"title": "...", "exercises": [...], "scheduled_date": "2026-03-05"}"""
     logger.info("[update_session] user_id=%s, session_id=%s", user_id, session_id)
     updates_data = json.loads(updates)
     uid = uuid.UUID(user_id)
@@ -325,14 +397,58 @@ async def update_session(user_id: str, session_id: str, updates: str) -> dict:
             set_clauses.append(f"exercises = ${param_idx}")
             params.append(json.dumps(updates_data["exercises"]))
 
+        if "scheduled_date" in updates_data:
+            param_idx += 1
+            set_clauses.append(f"scheduled_date = ${param_idx}")
+            params.append(date.fromisoformat(updates_data["scheduled_date"]))
+
         if not set_clauses:
-            return {"error": "No valid fields to update. Provide 'title' and/or 'exercises'."}
+            return {"error": "No valid fields to update. Provide 'title', 'exercises', and/or 'scheduled_date'."}
 
         query = f"UPDATE workout_sessions SET {', '.join(set_clauses)} WHERE id = $1"
         await conn.execute(query, sid, *params)
 
     result = {"session_id": session_id, "message": "Session updated successfully."}
     logger.info("[update_session] done: %s", result)
+    return result
+
+
+@mcp.tool()
+async def delete_session(user_id: str, session_id: str) -> dict:
+    """Delete a scheduled workout session. Only sessions with status 'scheduled'
+    can be deleted — in-progress or completed sessions cannot be removed."""
+    logger.info("[delete_session] user_id=%s, session_id=%s", user_id, session_id)
+    uid = uuid.UUID(user_id)
+    sid = uuid.UUID(session_id)
+
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """SELECT id, title, scheduled_date, status
+               FROM workout_sessions WHERE id = $1 AND user_id = $2""",
+            sid, uid,
+        )
+        if not row:
+            return {"error": "Session not found or does not belong to user"}
+
+        if row["status"] != "scheduled":
+            return {"error": f"Cannot delete a session with status '{row['status']}'. Only scheduled sessions can be deleted."}
+
+        async with conn.transaction():
+            await conn.execute(
+                "DELETE FROM exercise_logs WHERE session_id = $1", sid
+            )
+            await conn.execute(
+                "DELETE FROM workout_sessions WHERE id = $1", sid
+            )
+
+    result = {
+        "deleted_session_id": session_id,
+        "title": row["title"],
+        "scheduled_date": row["scheduled_date"].isoformat(),
+        "message": f"Session '{row['title']}' on {row['scheduled_date'].isoformat()} has been deleted.",
+    }
+    logger.info("[delete_session] done: %s", result)
     return result
 
 
