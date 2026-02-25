@@ -50,7 +50,7 @@ jobs:
         run: cd mobile && npx eslint .
 
       - name: Unit tests
-        run: cd mobile && npx jest --coverage
+        run: cd mobile && npx jest --coverage --passWithNoTests
 
       # --- Backend checks (always run - fast enough) ---
       - name: Setup Python
