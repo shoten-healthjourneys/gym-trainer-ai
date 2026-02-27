@@ -13,7 +13,7 @@ set -euo pipefail
 : "${ACA_NAME:?ACA_NAME environment variable is required}"
 : "${RESOURCE_GROUP:?RESOURCE_GROUP environment variable is required}"
 
-IMAGE_TAG="${IMAGE_TAG:-latest}"
+IMAGE_TAG="${IMAGE_TAG:-$(git rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M%S)}"
 IMAGE_NAME="${ACR_NAME}.azurecr.io/gym-trainer-api:${IMAGE_TAG}"
 
 echo "==> Logging in to ACR: ${ACR_NAME}"
