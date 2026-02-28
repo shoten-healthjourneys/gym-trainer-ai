@@ -428,8 +428,7 @@ async def update_session(user_id: str, session_id: str, updates: str) -> dict:
 
 @mcp.tool()
 async def delete_session(user_id: str, session_id: str) -> dict:
-    """Delete a scheduled workout session. Only sessions with status 'scheduled'
-    can be deleted — in-progress or completed sessions cannot be removed."""
+    """Delete a workout session and all its exercise logs."""
     logger.info("[delete_session] user_id=%s, session_id=%s", user_id, session_id)
     uid = uuid.UUID(user_id)
     sid = uuid.UUID(session_id)
@@ -443,9 +442,6 @@ async def delete_session(user_id: str, session_id: str) -> dict:
         )
         if not row:
             return {"error": "Session not found or does not belong to user"}
-
-        if row["status"] != "scheduled":
-            return {"error": f"Cannot delete a session with status '{row['status']}'. Only scheduled sessions can be deleted."}
 
         async with conn.transaction():
             await conn.execute(
