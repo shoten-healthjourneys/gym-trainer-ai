@@ -19,7 +19,7 @@ interface WorkoutState {
   fetchWeekSessions: (weekStart: string) => Promise<void>;
   startSession: (sessionId: string) => Promise<void>;
   completeSession: (sessionId: string) => Promise<void>;
-  logSet: (sessionId: string, exerciseName: string, setData: { weightKg: number; reps: number; rpe?: number; notes?: string }) => Promise<void>;
+  logSet: (sessionId: string, exerciseName: string, setData: { weightKg?: number; reps?: number; distanceM?: number; durationSeconds?: number; rpe?: number; notes?: string }) => Promise<void>;
   updateSet: (logId: string, updates: Partial<ExerciseLog>) => Promise<void>;
   deleteSet: (logId: string, exerciseName: string) => Promise<void>;
   fetchExerciseLogs: (sessionId: string, exerciseName: string) => Promise<void>;

@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from app.auth import get_current_user
 from app.config import settings
 from app.db import get_db, fetch_one, fetch_all, execute
+from app.exercise_resolver import resolve_exercise_name
 
 logger = logging.getLogger("voice")
 
@@ -23,8 +24,10 @@ def _log_to_camel(row: dict) -> dict:
         "exerciseName": row["exercise_name"],
         "setNumber": row["set_number"],
         "weightKg": float(row["weight_kg"]) if row.get("weight_kg") is not None else None,
-        "reps": row["reps"],
+        "reps": row.get("reps"),
         "rpe": float(row["rpe"]) if row.get("rpe") is not None else None,
+        "distanceM": float(row["distance_m"]) if row.get("distance_m") is not None else None,
+        "durationSeconds": row.get("duration_seconds"),
         "notes": row.get("notes"),
         "loggedAt": row["logged_at"].isoformat() if row.get("logged_at") else None,
     }
@@ -52,13 +55,25 @@ async def voice_parse(
     if session["status"] != "in_progress":
         raise HTTPException(status_code=400, detail="Session is not in progress")
 
+    # Look up exercise category (cardio vs strength)
+    resolved_name = await resolve_exercise_name(conn, exercise_name)
+    ex_row = await fetch_one(
+        conn,
+        "SELECT category FROM exercises WHERE LOWER(name) = LOWER($1)",
+        resolved_name,
+    )
+    is_cardio = ex_row["category"] == "cardio" if ex_row and ex_row.get("category") else False
+
     # 1. Transcribe with Deepgram
     audio_bytes = await audio.read()
     dg = DeepgramClient(settings.DEEPGRAM_API_KEY)
+    base_keywords = ["reps:2", "sets:2", "kilograms:2", "kg:2", "lbs:2", "RPE:2"]
+    if is_cardio:
+        base_keywords.extend(["meters:2", "metres:2", "distance:2", "seconds:2", "minutes:2"])
     options = PrerecordedOptions(
         model="nova-2",
         language="en",
-        keywords=["reps:2", "sets:2", "kilograms:2", "kg:2", "lbs:2", "RPE:2"],
+        keywords=base_keywords,
     )
     dg_response = dg.listen.rest.v("1").transcribe_file(
         {"buffer": audio_bytes, "mimetype": audio.content_type or "audio/mp4"},
@@ -94,7 +109,17 @@ async def voice_parse(
 
     # 3. Parse with Claude Haiku
     client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-    prompt = f"""Parse this gym set log into JSON. Exercise: {exercise_name}.
+    if is_cardio:
+        prompt = f"""Parse this cardio exercise log into JSON. Exercise: {exercise_name}.
+Previous entries this session: {json.dumps(prev_sets)}.
+Transcript: "{transcript}"
+
+Return JSON only, no other text: {{ "distanceM": number|null, "durationSeconds": number|null, "rpe": number|null }}
+Convert time to total seconds (e.g. "2 minutes 30" = 150, "1 hour 10 minutes" = 4200).
+Convert distance to meters (e.g. "5k" or "5 km" = 5000, "1 mile" = 1609).
+If ambiguous, return {{ "needsClarification": "question" }}"""
+    else:
+        prompt = f"""Parse this gym set log into JSON. Exercise: {exercise_name}.
 Previous sets this session: {json.dumps(prev_sets)}.
 Transcript: "{transcript}"
 
@@ -130,6 +155,21 @@ If ambiguous, return {{ "needsClarification": "question" }}"""
         return {"transcript": transcript, "needsClarification": parsed["needsClarification"]}
 
     # 4. Return parsed data for user confirmation (don't auto-insert)
+    if is_cardio:
+        distance_m = parsed.get("distanceM")
+        duration_seconds = parsed.get("durationSeconds")
+        rpe = parsed.get("rpe")
+
+        if distance_m is None and duration_seconds is None:
+            logger.warning("[voice] missing distance and duration for cardio")
+            return {"transcript": transcript, "needsClarification": "Could not determine distance or duration. Please try again."}
+
+        logger.info("[voice] parsed cardio: %sm, %ss (rpe=%s)", distance_m, duration_seconds, rpe)
+        return {
+            "transcript": transcript,
+            "parsed": {"distanceM": distance_m, "durationSeconds": duration_seconds, "rpe": rpe},
+        }
+
     weight_kg = parsed.get("weightKg")
     reps = parsed.get("reps")
     rpe = parsed.get("rpe")

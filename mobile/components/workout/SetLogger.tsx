@@ -5,15 +5,33 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, spacing } from '../../theme';
 import { useWorkoutStore } from '../../stores/workoutStore';
 import { ManualSetDialog } from './ManualSetDialog';
-import type { ExerciseLog } from '../../types';
+import type { ExerciseLog, ExerciseType } from '../../types';
+
+function formatSetDisplay(log: ExerciseLog, exerciseType?: ExerciseType): string {
+  if (exerciseType === 'cardio') {
+    const parts: string[] = [];
+    if (log.distanceM != null) parts.push(`${log.distanceM}m`);
+    if (log.durationSeconds != null) {
+      const mins = Math.floor(log.durationSeconds / 60);
+      const secs = log.durationSeconds % 60;
+      parts.push(`${mins}:${secs.toString().padStart(2, '0')}`);
+    }
+    const main = parts.length > 0 ? parts.join(' in ') : 'logged';
+    const rpe = log.rpe ? ` @ RPE ${log.rpe}` : '';
+    return `Set ${log.setNumber}: ${main}${rpe}`;
+  }
+  const rpe = log.rpe ? ` @ RPE ${log.rpe}` : '';
+  return `Set ${log.setNumber}: ${log.weightKg ?? 0}kg x ${log.reps ?? 0}${rpe}`;
+}
 
 interface SetLoggerProps {
   exerciseName: string;
   sessionId: string;
   logs: ExerciseLog[];
+  exerciseType?: ExerciseType;
 }
 
-export function SetLogger({ exerciseName, sessionId, logs }: SetLoggerProps) {
+export function SetLogger({ exerciseName, sessionId, logs, exerciseType }: SetLoggerProps) {
   const [editingLog, setEditingLog] = useState<ExerciseLog | undefined>();
   const [dialogVisible, setDialogVisible] = useState(false);
   const updateSet = useWorkoutStore((s) => s.updateSet);
@@ -39,7 +57,7 @@ export function SetLogger({ exerciseName, sessionId, logs }: SetLoggerProps) {
     );
   };
 
-  const handleEditSubmit = (data: { weightKg: number; reps: number; rpe?: number }) => {
+  const handleEditSubmit = (data: { weightKg?: number; reps?: number; distanceM?: number; durationSeconds?: number; rpe?: number }) => {
     if (editingLog) {
       updateSet(editingLog.id, data);
     }
@@ -58,8 +76,7 @@ export function SetLogger({ exerciseName, sessionId, logs }: SetLoggerProps) {
       {logs.map((log) => (
         <View key={log.id} style={styles.row}>
           <Text variant="bodySmall" style={styles.setText}>
-            Set {log.setNumber}: {log.weightKg}kg x {log.reps}
-            {log.rpe ? ` @ RPE ${log.rpe}` : ''}
+            {formatSetDisplay(log, exerciseType)}
           </Text>
           <View style={styles.actions}>
             <TouchableOpacity onPress={() => handleEdit(log)} hitSlop={8}>
@@ -76,6 +93,7 @@ export function SetLogger({ exerciseName, sessionId, logs }: SetLoggerProps) {
         onDismiss={() => { setDialogVisible(false); setEditingLog(undefined); }}
         onSubmit={handleEditSubmit}
         existingLog={editingLog}
+        exerciseType={exerciseType}
       />
     </View>
   );

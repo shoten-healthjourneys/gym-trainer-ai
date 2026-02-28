@@ -47,12 +47,15 @@ export interface WorkoutPlan {
 
 export type SessionStatus = 'scheduled' | 'in_progress' | 'completed' | 'skipped';
 
+export type ExerciseType = 'strength' | 'cardio';
+
 export interface ExerciseInSession {
   name: string;
   sets: number;
   reps: number;
   youtubeUrl?: string;
   notes?: string;
+  exerciseType?: ExerciseType;
 }
 
 export interface WorkoutSession {
@@ -75,8 +78,10 @@ export interface ExerciseLog {
   sessionId: string;
   exerciseName: string;
   setNumber: number;
-  weightKg: number;
-  reps: number;
+  weightKg?: number;
+  reps?: number;
+  distanceM?: number;
+  durationSeconds?: number;
   rpe?: number;
   notes?: string;
   loggedAt: string;
