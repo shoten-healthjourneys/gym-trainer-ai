@@ -145,6 +145,31 @@ async def chat_stream(
     )
 
 
+@router.get("/chat/history")
+async def get_chat_history(
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
+    pool = request.app.state.pool
+    user_id = uuid.UUID(user["user_id"])
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT id, role, content, created_at FROM chat_messages
+               WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50""",
+            user_id,
+        )
+    messages = [
+        {
+            "id": str(r["id"]),
+            "role": r["role"],
+            "content": r["content"],
+            "createdAt": r["created_at"].isoformat(),
+        }
+        for r in reversed(rows)
+    ]
+    return {"messages": messages}
+
+
 @router.delete("/chat/history")
 async def clear_chat_history(
     request: Request,

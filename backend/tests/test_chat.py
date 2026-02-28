@@ -50,6 +50,48 @@ async def test_chat_stream(client, app, mock_pool_conn):
     assert len(done_events) == 1
 
 
+async def test_get_chat_history(client, mock_pool_conn):
+    """Test that GET /chat/history returns last 50 messages in camelCase."""
+    from datetime import datetime, timezone
+
+    mock_pool_conn.fetch.return_value = [
+        {
+            "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            "role": "assistant",
+            "content": "Hi there!",
+            "created_at": datetime(2026, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
+        },
+        {
+            "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+            "role": "user",
+            "content": "Hello",
+            "created_at": datetime(2026, 1, 15, 10, 29, 0, tzinfo=timezone.utc),
+        },
+    ]
+
+    resp = await client.get("/chat/history")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "messages" in data
+    # Results are reversed (chronological order), so user msg first
+    assert len(data["messages"]) == 2
+    assert data["messages"][0]["role"] == "user"
+    assert data["messages"][0]["content"] == "Hello"
+    assert data["messages"][0]["id"] == "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+    assert "createdAt" in data["messages"][0]
+    assert data["messages"][1]["role"] == "assistant"
+
+
+async def test_get_chat_history_empty(client, mock_pool_conn):
+    """Test that GET /chat/history returns empty list when no messages."""
+    mock_pool_conn.fetch.return_value = []
+
+    resp = await client.get("/chat/history")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data == {"messages": []}
+
+
 async def test_clear_chat_history(client, mock_pool_conn):
     mock_pool_conn.execute.return_value = "DELETE 5"
     resp = await client.delete("/chat/history")
