@@ -9,21 +9,25 @@ Dark-first, Electric Teal accent, modern fitness aesthetic.
 
 | Token | Hex | Usage |
 |---|---|---|
-| `background` | `#0A0A0A` | App background |
-| `surface` | `#1C1C1E` | Cards, tab bar, inputs |
-| `surfaceElevated` | `#2C2C2E` | Elevated cards, modals |
+| `background` | `#121212` | App background |
+| `surface` | `#1E1E1E` | Cards, tab bar, inputs |
+| `surfaceElevated` | `#2A2A2C` | Elevated cards, modals |
 | `border` | `#3A3A3C` | Card borders, dividers |
 | `borderSubtle` | `#2C2C2E` | Subtle separators |
 | `accent` | `#06C882` | Primary CTA, active states, tab icons |
-| `accentLight` | `#2DDC71` | Hover/pressed accent variant |
+| `accentLight` | `#34D4A0` | Hover/pressed accent variant |
 | `accentMuted` | `rgba(6,200,130,0.15)` | Selected chip backgrounds, badges |
+| `accentSecondary` | `#F59E0B` | Progress charts, volume trends, secondary badges |
+| `accentSecondaryMuted` | `rgba(245,158,11,0.15)` | Warm badge backgrounds |
+| `gradientStart` | `rgba(6,200,130,0.08)` | Active workout card top |
+| `gradientEnd` | `transparent` | Fades to surface |
 | `textPrimary` | `#FFFFFF` | Headings, body text |
 | `textSecondary` | `#ABABAB` | Subtitles, descriptions |
 | `textMuted` | `#6B6B6B` | Placeholders, inactive icons |
 | `success` | `#34C759` | Positive feedback |
 | `warning` | `#F59E0B` | Caution states |
 | `destructive` | `#FF3B30` | Errors, delete actions |
-| `onAccent` | `#0A0A0A` | Text on accent backgrounds |
+| `onAccent` | `#121212` | Text on accent backgrounds |
 
 ---
 
