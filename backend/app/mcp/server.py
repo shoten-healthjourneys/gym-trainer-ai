@@ -223,13 +223,12 @@ async def get_planned_workouts(
 
 
 @mcp.tool()
-async def save_workout_plan(user_id: str, week_start: str, plan: str) -> dict:
+async def save_workout_plan(user_id: str, week_start: str, sessions: list[dict]) -> dict:
     """Save a workout plan and create individual workout sessions.
-    The plan parameter must be a JSON string with a 'sessions' array.
-    Each session has a 'day' (e.g. 'Monday'), 'title', and 'exercises' list."""
-    logger.info("[save_workout_plan] user_id=%s, week_start=%s, plan_length=%d", user_id, week_start, len(plan))
-    plan_data = json.loads(plan)
-    logger.info("[save_workout_plan] parsed %d sessions", len(plan_data.get("sessions", [])))
+    Each session dict must have: 'day' (e.g. 'Monday'), 'title' (e.g. 'Leg Day'),
+    and 'exercises' (list of exercise dicts with 'name', 'sets', 'reps', etc.)."""
+    logger.info("[save_workout_plan] user_id=%s, week_start=%s, sessions=%d", user_id, week_start, len(sessions))
+    plan_data = {"sessions": sessions}
     start = date.fromisoformat(week_start)
     uid = uuid.UUID(user_id)
     plan_id = uuid.uuid4()
@@ -297,12 +296,14 @@ async def save_workout_plan(user_id: str, week_start: str, plan: str) -> dict:
 
 
 @mcp.tool()
-async def add_session_to_week(user_id: str, week_start: str, session: str) -> dict:
+async def add_session_to_week(user_id: str, week_start: str, day: str, title: str, exercises: list[dict]) -> dict:
     """Add a single workout session to an existing week without modifying other sessions.
-    session is a JSON string: {"day": "Tuesday", "title": "Leg Day", "exercises": [...]}
-    If a session already exists on that day, it will be replaced."""
-    logger.info("[add_session_to_week] user_id=%s, week_start=%s", user_id, week_start)
-    session_data = json.loads(session)
+    If a session already exists on that day, it will be replaced.
+    day: full day name (e.g. 'Tuesday') or abbreviation (e.g. 'Tue').
+    title: session name (e.g. 'Leg Day').
+    exercises: list of exercise dicts with 'name', 'sets', 'reps', etc."""
+    logger.info("[add_session_to_week] user_id=%s, week_start=%s, day=%s", user_id, week_start, day)
+    session_data = {"day": day, "title": title, "exercises": exercises}
     start = date.fromisoformat(week_start)
     uid = uuid.UUID(user_id)
 
@@ -362,11 +363,12 @@ async def add_session_to_week(user_id: str, week_start: str, session: str) -> di
 
 
 @mcp.tool()
-async def update_session(user_id: str, session_id: str, updates: str) -> dict:
+async def update_session(user_id: str, session_id: str, updates: dict) -> dict:
     """Update an existing workout session's title, exercises, or scheduled date.
-    updates is a JSON string: {"title": "...", "exercises": [...], "scheduled_date": "2026-03-05"}"""
+    updates dict can contain: 'title' (str), 'exercises' (list of exercise dicts),
+    'scheduled_date' (ISO date string like '2026-03-05'). Include only the fields to change."""
     logger.info("[update_session] user_id=%s, session_id=%s", user_id, session_id)
-    updates_data = json.loads(updates)
+    updates_data = updates
     uid = uuid.UUID(user_id)
     sid = uuid.UUID(session_id)
 
