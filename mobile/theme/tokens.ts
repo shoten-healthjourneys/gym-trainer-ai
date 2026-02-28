@@ -3,9 +3,9 @@
 
 export const colors = {
   // Backgrounds
-  background: '#0A0A0A',
-  surface: '#1C1C1E',
-  surfaceElevated: '#2C2C2E',
+  background: '#121212',
+  surface: '#1E1E1E',
+  surfaceElevated: '#2A2A2C',
 
   // Borders
   border: '#3A3A3C',
@@ -13,8 +13,16 @@ export const colors = {
 
   // Accent (Electric Teal)
   accent: '#06C882',
-  accentLight: '#2DDC71',
+  accentLight: '#34D4A0',
   accentMuted: 'rgba(6, 200, 130, 0.15)',
+
+  // Secondary accent (Warm Amber — charts, progress, secondary badges)
+  accentSecondary: '#F59E0B',
+  accentSecondaryMuted: 'rgba(245, 158, 11, 0.15)',
+
+  // Gradients (hero cards, active workout)
+  gradientStart: 'rgba(6, 200, 130, 0.08)',
+  gradientEnd: 'transparent',
 
   // Text
   textPrimary: '#FFFFFF',
@@ -27,7 +35,7 @@ export const colors = {
   destructive: '#FF3B30',
 
   // On-accent (text on teal backgrounds)
-  onAccent: '#0A0A0A',
+  onAccent: '#121212',
 } as const;
 
 export const spacing = {
