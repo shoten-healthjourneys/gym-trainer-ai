@@ -20,13 +20,13 @@ mcp = FastMCP(name="gym-tools")
 _pool: asyncpg.Pool | None = None
 
 _DAY_OFFSETS: dict[str, int] = {
-    "monday": 0,
-    "tuesday": 1,
-    "wednesday": 2,
-    "thursday": 3,
-    "friday": 4,
-    "saturday": 5,
-    "sunday": 6,
+    "monday": 0, "mon": 0,
+    "tuesday": 1, "tue": 1, "tues": 1,
+    "wednesday": 2, "wed": 2,
+    "thursday": 3, "thu": 3, "thurs": 3,
+    "friday": 4, "fri": 4,
+    "saturday": 5, "sat": 5,
+    "sunday": 6, "sun": 6,
 }
 
 
@@ -263,9 +263,10 @@ async def save_workout_plan(user_id: str, week_start: str, plan: str) -> dict:
             )
 
             for session in plan_data.get("sessions", []):
-                day_name = session.get("day", "").lower()
+                day_name = session.get("day", "").strip().lower()
                 offset = _DAY_OFFSETS.get(day_name)
                 if offset is None:
+                    logger.warning("[save_workout_plan] unrecognised day '%s', skipping session", session.get("day"))
                     continue
                 scheduled = start + timedelta(days=offset)
                 session_id = uuid.uuid4()
@@ -305,10 +306,10 @@ async def add_session_to_week(user_id: str, week_start: str, session: str) -> di
     start = date.fromisoformat(week_start)
     uid = uuid.UUID(user_id)
 
-    day_name = session_data.get("day", "").lower()
+    day_name = session_data.get("day", "").strip().lower()
     offset = _DAY_OFFSETS.get(day_name)
     if offset is None:
-        return {"error": f"Invalid day: {session_data.get('day')}"}
+        return {"error": f"Invalid day: {session_data.get('day')}. Use full day names (e.g. Monday, Sunday) or abbreviations (e.g. Mon, Sun)."}
     scheduled = start + timedelta(days=offset)
 
     pool = await _get_pool()

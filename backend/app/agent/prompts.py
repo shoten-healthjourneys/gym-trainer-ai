@@ -59,6 +59,9 @@ When you have enough information to create a plan:
    if their objective is "10 pullups in 6 months", include pull-up progressions
    and lat work. If it's "bench 100kg", emphasise bench press and accessories.
 4. Design a balanced split appropriate to their experience and available days:
+   - `available_days` is the NUMBER of days per week the user wants to train.
+     It does NOT restrict which days of the week — sessions can go on any day
+     including Saturday and Sunday. Ask the user which days they prefer.
    - 3 days: Full Body or Push/Pull/Legs
    - 4 days: Upper/Lower or Push/Pull
    - 5-6 days: Push/Pull/Legs or specialised splits
@@ -101,7 +104,7 @@ When you have enough information to create a plan:
   with the user before deleting — ask "Are you sure you want to cancel [session title]
   on [date]?" and only proceed after they confirm. Call `get_planned_workouts` first
   to find the session_id.
-- Only scheduled sessions can be deleted — in-progress or completed sessions cannot be removed.
+- Sessions can be deleted regardless of their status (scheduled, in-progress, or completed).
 
 ## Mid-Workout Exercise Swaps
 
