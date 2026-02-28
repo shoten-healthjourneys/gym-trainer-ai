@@ -26,7 +26,7 @@ const STATUS_LABEL: Record<SessionStatus, string> = {
 function SessionCard({ session }: { session: WorkoutSession }) {
   const [expanded, setExpanded] = useState(false);
   const router = useRouter();
-  const dayLabel = format(parseISO(session.scheduledDate), 'EEEE');
+  const dayLabel = format(parseISO(session.scheduledDate), 'eee MMM d');
   const isScheduled = session.status === 'scheduled';
   const isInProgress = session.status === 'in_progress';
 
