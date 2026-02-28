@@ -63,8 +63,10 @@ CREATE TABLE IF NOT EXISTS exercise_logs (
     exercise_name VARCHAR(100) NOT NULL,
     set_number INT NOT NULL,
     weight_kg DECIMAL(5,1),
-    reps INT NOT NULL,
+    reps INT,
     rpe DECIMAL(3,1),
+    distance_m DECIMAL(7,1),
+    duration_seconds INT,
     notes VARCHAR(500),
     logged_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -92,6 +94,9 @@ CREATE INDEX IF NOT EXISTS idx_sessions_schedule ON workout_sessions(user_id, sc
 CREATE INDEX IF NOT EXISTS idx_chat_history ON chat_messages(user_id, created_at);
 
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS training_objective VARCHAR(1000);
+ALTER TABLE exercise_logs ADD COLUMN IF NOT EXISTS distance_m DECIMAL(7,1);
+ALTER TABLE exercise_logs ADD COLUMN IF NOT EXISTS duration_seconds INT;
+ALTER TABLE exercise_logs ALTER COLUMN reps DROP NOT NULL;
 """
 
 

@@ -393,6 +393,19 @@ async def update_session(user_id: str, session_id: str, updates: str) -> dict:
             for exercise in updates_data["exercises"]:
                 if exercise.get("name"):
                     exercise["name"] = await resolve_exercise_name(conn, exercise["name"])
+
+            # Duplicate exercise guard: check for duplicate names in the exercise list
+            exercise_names = [e["name"] for e in updates_data["exercises"] if e.get("name")]
+            seen = set()
+            duplicates = set()
+            for name in exercise_names:
+                if name in seen:
+                    duplicates.add(name)
+                seen.add(name)
+            if duplicates:
+                dup_list = ", ".join(sorted(duplicates))
+                return {"error": f"Duplicate exercises detected: {dup_list}. Each exercise should appear only once in a session."}
+
             param_idx += 1
             set_clauses.append(f"exercises = ${param_idx}")
             params.append(json.dumps(updates_data["exercises"]))

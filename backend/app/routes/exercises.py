@@ -17,9 +17,11 @@ class LogSetRequest(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
     session_id: str
     exercise_name: str
-    weight_kg: float
-    reps: int
+    weight_kg: float | None = None
+    reps: int | None = None
     rpe: float | None = None
+    distance_m: float | None = None
+    duration_seconds: int | None = None
     notes: str | None = None
 
 
@@ -28,6 +30,8 @@ class LogSetUpdate(BaseModel):
     weight_kg: float | None = None
     reps: int | None = None
     rpe: float | None = None
+    distance_m: float | None = None
+    duration_seconds: int | None = None
     notes: str | None = None
 
 
@@ -39,8 +43,10 @@ def _log_to_camel(row: dict) -> dict:
         "exerciseName": row["exercise_name"],
         "setNumber": row["set_number"],
         "weightKg": float(row["weight_kg"]) if row.get("weight_kg") is not None else None,
-        "reps": row["reps"],
+        "reps": row.get("reps"),
         "rpe": float(row["rpe"]) if row.get("rpe") is not None else None,
+        "distanceM": float(row["distance_m"]) if row.get("distance_m") is not None else None,
+        "durationSeconds": row.get("duration_seconds"),
         "notes": row.get("notes"),
         "loggedAt": row["logged_at"].isoformat() if row.get("logged_at") else None,
     }
@@ -85,10 +91,10 @@ async def create_exercise_log(
     log_id = uuid.uuid4()
     await execute(
         conn,
-        """INSERT INTO exercise_logs (id, user_id, session_id, exercise_name, set_number, weight_kg, reps, rpe, notes)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)""",
+        """INSERT INTO exercise_logs (id, user_id, session_id, exercise_name, set_number, weight_kg, reps, rpe, distance_m, duration_seconds, notes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)""",
         log_id, user_id, session_id, resolved_name, set_number,
-        body.weight_kg, body.reps, body.rpe, body.notes,
+        body.weight_kg, body.reps, body.rpe, body.distance_m, body.duration_seconds, body.notes,
     )
 
     row = await fetch_one(conn, "SELECT * FROM exercise_logs WHERE id = $1", log_id)
@@ -145,6 +151,14 @@ async def update_exercise_log(
         idx += 1
         updates.append(f"rpe = ${idx}")
         values.append(body.rpe)
+    if body.distance_m is not None:
+        idx += 1
+        updates.append(f"distance_m = ${idx}")
+        values.append(body.distance_m)
+    if body.duration_seconds is not None:
+        idx += 1
+        updates.append(f"duration_seconds = ${idx}")
+        values.append(body.duration_seconds)
     if body.notes is not None:
         idx += 1
         updates.append(f"notes = ${idx}")

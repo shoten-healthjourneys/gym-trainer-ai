@@ -42,7 +42,7 @@ export function ExerciseCard({ exercise, sessionId }: ExerciseCardProps) {
   }, [logs.length]);
 
   const handleManualAdd = useCallback(
-    (data: { weightKg: number; reps: number; rpe?: number }) => {
+    (data: { weightKg?: number; reps?: number; distanceM?: number; durationSeconds?: number; rpe?: number }) => {
       logSet(sessionId, exercise.name, data);
     },
     [sessionId, exercise.name, logSet],
@@ -85,6 +85,7 @@ export function ExerciseCard({ exercise, sessionId }: ExerciseCardProps) {
             exerciseName={exercise.name}
             sessionId={sessionId}
             logs={logs}
+            exerciseType={exercise.exerciseType}
           />
           {restActive && (
             <RestTimer
@@ -114,6 +115,7 @@ export function ExerciseCard({ exercise, sessionId }: ExerciseCardProps) {
             visible={addDialogVisible}
             onDismiss={() => setAddDialogVisible(false)}
             onSubmit={handleManualAdd}
+            exerciseType={exercise.exerciseType}
           />
         </CardContent>
       )}

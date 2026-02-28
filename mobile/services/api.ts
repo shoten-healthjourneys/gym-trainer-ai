@@ -126,6 +126,21 @@ export function getSession(id: string): Promise<Session> {
   return get<Session>(`/api/sessions/${encodeURIComponent(id)}`);
 }
 
+export interface ChatHistoryMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
+}
+
+interface ChatHistoryResponse {
+  messages: ChatHistoryMessage[];
+}
+
+export function getChatHistory(): Promise<ChatHistoryResponse> {
+  return get<ChatHistoryResponse>('/chat/history');
+}
+
 export async function isApiReachable(): Promise<boolean> {
   try {
     const controller = new AbortController();

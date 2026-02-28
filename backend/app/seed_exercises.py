@@ -24,7 +24,7 @@ EXERCISES = [
     {"name": "Dumbbell Row", "aliases": ["DB Row", "Single Arm Row", "One Arm DB Row"], "muscle_group": "back", "category": "compound", "equipment": "dumbbell"},
     {"name": "Pull-Up", "aliases": ["Pullup", "Pull Up", "Weighted Pull-Up"], "muscle_group": "back", "category": "bodyweight", "equipment": "bodyweight"},
     {"name": "Chin-Up", "aliases": ["Chinup", "Chin Up", "Weighted Chin-Up"], "muscle_group": "back", "category": "bodyweight", "equipment": "bodyweight"},
-    {"name": "Lat Pulldown", "aliases": ["Lat Pull Down", "Cable Pulldown", "Wide Grip Pulldown"], "muscle_group": "back", "category": "compound", "equipment": "cable"},
+    {"name": "Lat Pulldown", "aliases": ["Lat Pull Down", "Cable Pulldown", "Wide Grip Pulldown", "Lat Pulldown Machine"], "muscle_group": "back", "category": "compound", "equipment": "cable"},
     {"name": "Seated Cable Row", "aliases": ["Cable Row", "Seated Row"], "muscle_group": "back", "category": "compound", "equipment": "cable"},
     {"name": "T-Bar Row", "aliases": ["T Bar Row", "Landmine Row"], "muscle_group": "back", "category": "compound", "equipment": "barbell"},
     {"name": "Face Pull", "aliases": ["Cable Face Pull"], "muscle_group": "back", "category": "isolation", "equipment": "cable"},
@@ -36,6 +36,7 @@ EXERCISES = [
     {"name": "Lateral Raise", "aliases": ["Side Raise", "DB Lateral Raise", "Side Lateral Raise"], "muscle_group": "shoulders", "category": "isolation", "equipment": "dumbbell"},
     {"name": "Front Raise", "aliases": ["DB Front Raise", "Dumbbell Front Raise"], "muscle_group": "shoulders", "category": "isolation", "equipment": "dumbbell"},
     {"name": "Reverse Fly", "aliases": ["Rear Delt Fly", "Reverse Dumbbell Fly", "Bent Over Reverse Fly"], "muscle_group": "shoulders", "category": "isolation", "equipment": "dumbbell"},
+    {"name": "Machine Shoulder Press", "aliases": ["Shoulder Press Machine", "Lever Shoulder Press", "Seated Machine Press"], "muscle_group": "shoulders", "category": "compound", "equipment": "machine"},
     {"name": "Upright Row", "aliases": ["Barbell Upright Row", "Cable Upright Row"], "muscle_group": "shoulders", "category": "compound", "equipment": "barbell"},
 
     # Legs

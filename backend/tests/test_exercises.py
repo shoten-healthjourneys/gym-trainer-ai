@@ -100,6 +100,69 @@ async def test_delete_exercise_log(client: AsyncClient, mock_conn):
 
 
 @pytest.mark.asyncio
+async def test_create_cardio_log(client: AsyncClient, mock_conn):
+    log_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+
+    mock_conn.fetchrow.side_effect = [
+        # _validate_session
+        {"id": uuid.UUID(TEST_SESSION_ID), "user_id": uuid.UUID(TEST_USER_ID), "status": "in_progress"},
+        # resolve_exercise_name: exact match
+        {"name": "Treadmill Run"},
+        # set_number query
+        {"next_set": 1},
+        # fetch created log
+        {
+            "id": log_id, "user_id": uuid.UUID(TEST_USER_ID),
+            "session_id": uuid.UUID(TEST_SESSION_ID), "exercise_name": "Treadmill Run",
+            "set_number": 1, "weight_kg": None, "reps": None, "rpe": 6.0,
+            "distance_m": 5000.0, "duration_seconds": 1800, "notes": None,
+            "logged_at": now,
+        },
+    ]
+    mock_conn.execute.return_value = "INSERT 0 1"
+
+    resp = await client.post("/api/exercises/log", json={
+        "sessionId": TEST_SESSION_ID,
+        "exerciseName": "Treadmill Run",
+        "distanceM": 5000.0,
+        "durationSeconds": 1800,
+        "rpe": 6.0,
+    })
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["exerciseName"] == "Treadmill Run"
+    assert data["distanceM"] == 5000.0
+    assert data["durationSeconds"] == 1800
+    assert data["reps"] is None
+    assert data["weightKg"] is None
+    assert data["rpe"] == 6.0
+
+
+@pytest.mark.asyncio
+async def test_update_cardio_log(client: AsyncClient, mock_conn):
+    log_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+
+    mock_conn.fetchrow.side_effect = [
+        # existing check
+        {"id": log_id, "user_id": uuid.UUID(TEST_USER_ID), "session_id": uuid.UUID(TEST_SESSION_ID),
+         "exercise_name": "Treadmill Run", "set_number": 1, "weight_kg": None, "reps": None,
+         "rpe": None, "distance_m": 5000.0, "duration_seconds": 1800, "notes": None, "logged_at": now},
+        # fetch updated
+        {"id": log_id, "user_id": uuid.UUID(TEST_USER_ID), "session_id": uuid.UUID(TEST_SESSION_ID),
+         "exercise_name": "Treadmill Run", "set_number": 1, "weight_kg": None, "reps": None,
+         "rpe": 7.0, "distance_m": 5500.0, "duration_seconds": 1800, "notes": None, "logged_at": now},
+    ]
+    mock_conn.execute.return_value = "UPDATE 1"
+
+    resp = await client.patch(f"/api/exercises/log/{log_id}", json={"distanceM": 5500.0, "rpe": 7.0})
+    assert resp.status_code == 200
+    assert resp.json()["distanceM"] == 5500.0
+    assert resp.json()["rpe"] == 7.0
+
+
+@pytest.mark.asyncio
 async def test_create_log_wrong_session(client: AsyncClient, mock_conn):
     mock_conn.fetchrow.return_value = None  # session not found
 

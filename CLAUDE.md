@@ -112,6 +112,16 @@ docker build --platform linux/amd64 -t gymtraineracr.azurecr.io/gym-trainer-api:
 export ACR_NAME=gymtraineracr ACA_NAME=gym-trainer-api RESOURCE_GROUP=gym-trainer-rg
 ./infra/scripts/deploy.sh
 ```
+The deploy script must be run from `infra/`. It tags images with the git commit
+SHA by default — this ensures Azure Container Apps always creates a new revision.
+Using a static tag like `:latest` causes Azure to skip revision creation when the
+tag hasn't changed, even if the underlying image was updated in ACR.
+
+### MCP tool server
+The MCP server runs as a separate process inside the Docker container (port 8080).
+The FastAPI app connects to it during startup to discover available tools. When
+adding new MCP tools, Claude only needs to redeploy the backend — no mobile app
+rebuild required. MCP tools are server-side only.
 
 ### Azure PostgreSQL extensions
 Extensions must be allow-listed before use. Currently allow-listed: `pg_trgm`.

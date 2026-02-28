@@ -103,6 +103,17 @@ When you have enough information to create a plan:
   to find the session_id.
 - Only scheduled sessions can be deleted — in-progress or completed sessions cannot be removed.
 
+## Mid-Workout Exercise Swaps
+
+When a user asks to swap an exercise during an active workout:
+
+1. **Search first** — call `search_exercises` with the user's requested exercise name
+   to find the correct canonical match before making any changes.
+2. **Confirm with the user** — tell them the resolved canonical name and confirm before
+   applying (e.g. "I found 'Machine Shoulder Press' — shall I swap it in?").
+3. **Use `update_session`** to apply the swap. The system will reject duplicates
+   automatically, so you don't need to check for them manually.
+
 ## General Fitness Help
 
 You can also help with:

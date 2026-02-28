@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { del } from '../services/api';
+import { del, getChatHistory } from '../services/api';
 import { streamChat } from '../services/sse';
 import type { ChatDisplayMessage } from '../types';
 
@@ -8,9 +8,11 @@ interface ChatState {
   isStreaming: boolean;
   error: string | null;
   lastFailedMessage: string | null;
+  historyLoaded: boolean;
   sendMessage: (text: string) => Promise<void>;
   retryLastMessage: () => Promise<void>;
   newChat: () => Promise<void>;
+  loadMessages: () => Promise<void>;
   clearMessages: () => void;
   clearError: () => void;
 }
@@ -20,6 +22,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isStreaming: false,
   error: null,
   lastFailedMessage: null,
+  historyLoaded: false,
 
   sendMessage: async (text: string) => {
     const userMsg: ChatDisplayMessage = {
@@ -136,7 +139,31 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } catch {
       // Clear locally even if server fails
     }
-    set({ messages: [], error: null, isStreaming: false });
+    set({ messages: [], error: null, isStreaming: false, historyLoaded: false });
+  },
+
+  loadMessages: async () => {
+    const { messages, historyLoaded, isStreaming } = get();
+    if (historyLoaded || messages.length > 0 || isStreaming) return;
+
+    try {
+      const response = await getChatHistory();
+      const loaded: ChatDisplayMessage[] = response.messages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+      }));
+
+      // Re-check store is still empty (guard against race with sendMessage)
+      if (get().messages.length === 0 && loaded.length > 0) {
+        set({ messages: loaded, historyLoaded: true });
+      } else {
+        set({ historyLoaded: true });
+      }
+    } catch {
+      // Silently fail — user can still start a new conversation
+      set({ historyLoaded: true });
+    }
   },
 
   clearMessages: () => set({ messages: [], error: null }),

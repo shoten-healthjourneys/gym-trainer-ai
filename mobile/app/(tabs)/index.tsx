@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { IconButton, Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { ScreenContainer, TextInput } from '../../components/ui';
 import { MessageBubble } from '../../components/chat';
 import { useChatStore } from '../../stores/chatStore';
@@ -24,6 +25,13 @@ export default function ChatScreen() {
   const lastFailedMessage = useChatStore((s) => s.lastFailedMessage);
   const retryLastMessage = useChatStore((s) => s.retryLastMessage);
   const clearError = useChatStore((s) => s.clearError);
+  const loadMessages = useChatStore((s) => s.loadMessages);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadMessages();
+    }, [loadMessages]),
+  );
 
   const [input, setInput] = useState('');
   const flatListRef = useRef<FlatList<ChatDisplayMessage>>(null);
