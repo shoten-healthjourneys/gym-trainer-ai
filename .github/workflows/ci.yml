@@ -126,6 +126,30 @@ jobs:
       - name: Build preview APK
         run: cd mobile && eas build --profile preview --platform android --non-interactive
 
+  ota-update:
+    needs: [lint-and-test, changes]
+    if: github.ref == 'refs/heads/main' && needs.changes.outputs.mobile == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Expo
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install deps
+        run: cd mobile && npm ci
+
+      - name: Publish OTA update
+        run: cd mobile && eas update --channel preview --message "$(git log -1 --pretty=%s)" --non-interactive
+
   production-build:
     needs: lint-and-test
     if: startsWith(github.ref, 'refs/tags/v')
