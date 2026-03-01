@@ -218,3 +218,36 @@ async def complete_session(
         session_id,
     )
     return _to_camel(updated)
+
+
+@router.post("/sessions/{session_id}/reopen")
+async def reopen_session(
+    session_id: uuid.UUID,
+    user: dict = Depends(get_current_user),
+    conn=Depends(get_db),
+):
+    """Reopen a completed session so the user can add/edit sets."""
+    user_id = uuid.UUID(user["user_id"])
+    row = await fetch_one(
+        conn,
+        "SELECT * FROM workout_sessions WHERE id = $1 AND user_id = $2",
+        session_id, user_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if row["status"] != "completed":
+        raise HTTPException(status_code=400, detail=f"Cannot reopen session with status '{row['status']}'")
+
+    await execute(
+        conn,
+        "UPDATE workout_sessions SET status = 'in_progress', completed_at = NULL WHERE id = $1",
+        session_id,
+    )
+    updated = await fetch_one(
+        conn,
+        """SELECT id, user_id, plan_id, scheduled_date, title, status,
+                  exercises, started_at, completed_at, created_at, schema_version
+           FROM workout_sessions WHERE id = $1""",
+        session_id,
+    )
+    return _to_camel(updated)

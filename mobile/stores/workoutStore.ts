@@ -51,6 +51,7 @@ interface WorkoutState extends TimerState {
   fetchWeekSessions: (weekStart: string) => Promise<void>;
   startSession: (sessionId: string) => Promise<void>;
   completeSession: (sessionId: string) => Promise<void>;
+  reopenSession: (sessionId: string) => Promise<void>;
   logSet: (sessionId: string, exerciseName: string, setData: { weightKg?: number; reps?: number; distanceM?: number; durationSeconds?: number; rpe?: number; notes?: string; roundNumber?: number }) => Promise<void>;
   updateSet: (logId: string, updates: Partial<ExerciseLog>) => Promise<void>;
   deleteSet: (logId: string, exerciseName: string) => Promise<void>;
@@ -126,6 +127,21 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         activeSession: null,
         exerciseLogs: {},
         ...initialTimerState,
+        sessions: state.sessions.map((s) => (s.id === sessionId ? session : s)),
+        loading: false,
+      }));
+    } catch (e) {
+      set({ loading: false, error: (e as Error).message });
+    }
+  },
+
+  reopenSession: async (sessionId: string) => {
+    set({ loading: true, error: null });
+    try {
+      const raw = await post<WorkoutSession>(`/api/sessions/${encodeURIComponent(sessionId)}/reopen`, {});
+      const session = migrateSession(raw);
+      set((state) => ({
+        activeSession: session,
         sessions: state.sessions.map((s) => (s.id === sessionId ? session : s)),
         loading: false,
       }));

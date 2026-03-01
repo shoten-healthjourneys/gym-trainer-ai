@@ -51,9 +51,11 @@ function getSessionTimerBadges(session: WorkoutSession): string[] {
 function SessionCard({ session }: { session: WorkoutSession }) {
   const [expanded, setExpanded] = useState(false);
   const router = useRouter();
+  const reopenSession = useWorkoutStore((s) => s.reopenSession);
   const dayLabel = format(parseISO(session.scheduledDate), 'eee MMM d');
   const isScheduled = session.status === 'scheduled';
   const isInProgress = session.status === 'in_progress';
+  const isCompleted = session.status === 'completed';
   const allExercises = getAllExercises(session);
   const timerBadges = getSessionTimerBadges(session);
 
@@ -145,6 +147,20 @@ function SessionCard({ session }: { session: WorkoutSession }) {
                 size="small"
               >
                 {isInProgress ? 'Resume Workout' : 'Start Workout'}
+              </Button>
+            </View>
+          )}
+          {isCompleted && (
+            <View style={styles.startButtonRow}>
+              <Button
+                variant="ghost"
+                size="small"
+                onPress={async () => {
+                  await reopenSession(session.id);
+                  router.push(`/workout/${session.id}`);
+                }}
+              >
+                Reopen Workout
               </Button>
             </View>
           )}
