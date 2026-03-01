@@ -44,6 +44,7 @@ export function ExerciseCard({
   const [restActive, setRestActive] = useState(false);
   const logs = useWorkoutStore((s) => s.exerciseLogs[exercise.name] ?? []);
   const prevLogsLength = useRef(logs.length);
+  const initialLoadDone = useRef(false);
   const logSet = useWorkoutStore((s) => s.logSet);
   const fetchExerciseLogs = useWorkoutStore((s) => s.fetchExerciseLogs);
 
@@ -58,6 +59,12 @@ export function ExerciseCard({
   }, []);
 
   useEffect(() => {
+    if (!initialLoadDone.current) {
+      // First update after fetch — sync ref, don't trigger rest timer
+      initialLoadDone.current = true;
+      prevLogsLength.current = logs.length;
+      return;
+    }
     if (logs.length > prevLogsLength.current) {
       if (!suppressRest) setRestActive(true);
       onSetLogged?.();
