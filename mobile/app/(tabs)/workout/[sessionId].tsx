@@ -4,7 +4,7 @@ import { Text } from 'react-native-paper';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ScreenContainer, Button } from '../../../components/ui';
-import { ExerciseGroupCard } from '../../../components/workout';
+import { ExerciseGroupCard, FocusMode } from '../../../components/workout';
 import { useWorkoutStore } from '../../../stores/workoutStore';
 import { get } from '../../../services/api';
 import { colors, spacing } from '../../../theme';
@@ -22,6 +22,7 @@ export default function ActiveWorkoutScreen() {
   const loading = useWorkoutStore((s) => s.loading);
 
   const [elapsed, setElapsed] = useState('00:00');
+  const [focusGroupIndex, setFocusGroupIndex] = useState<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Set active session from sessions list or fetch from API if not in store
@@ -95,11 +96,20 @@ export default function ActiveWorkoutScreen() {
     }
   }, [sessionId, completeSession, router]);
 
+  const handleStartFocus = useCallback((index: number) => {
+    setFocusGroupIndex(index);
+  }, []);
+
   const renderGroup = useCallback(
-    ({ item }: { item: ExerciseGroup }) => (
-      <ExerciseGroupCard group={item} sessionId={sessionId!} />
+    ({ item, index }: { item: ExerciseGroup; index: number }) => (
+      <ExerciseGroupCard
+        group={item}
+        sessionId={sessionId!}
+        groupIndex={index}
+        onStartFocus={handleStartFocus}
+      />
     ),
-    [sessionId],
+    [sessionId, handleStartFocus],
   );
 
   if (!activeSession) {
@@ -141,6 +151,14 @@ export default function ActiveWorkoutScreen() {
           Complete Workout
         </Button>
       </View>
+
+      <FocusMode
+        visible={focusGroupIndex !== null}
+        sessionId={sessionId!}
+        exerciseGroups={activeSession.exerciseGroups}
+        initialGroupIndex={focusGroupIndex ?? 0}
+        onClose={() => setFocusGroupIndex(null)}
+      />
     </ScreenContainer>
   );
 }
