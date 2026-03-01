@@ -10,23 +10,90 @@ from app.db import get_db, fetch_one, fetch_all, execute
 router = APIRouter(prefix="/api", tags=["sessions"])
 
 
+def _exercise_to_camel(ex: dict) -> dict:
+    """Convert a single exercise dict to camelCase."""
+    result = {
+        "name": ex.get("name", ""),
+        "sets": ex.get("sets", 0),
+        "reps": ex.get("reps", 0),
+        "youtubeUrl": ex.get("youtube_url", ex.get("youtubeUrl", "")),
+        "notes": ex.get("notes", ""),
+    }
+    exercise_type = ex.get("exerciseType") or ex.get("exercise_type")
+    if exercise_type:
+        result["exerciseType"] = exercise_type
+    target_rpe = ex.get("targetRpe") or ex.get("target_rpe")
+    if target_rpe:
+        result["targetRpe"] = target_rpe
+    return result
+
+
+def _timer_config_to_camel(tc: dict) -> dict:
+    """Convert a timer_config dict from snake_case to camelCase."""
+    return {
+        "mode": tc.get("mode", "standard"),
+        **({"restSeconds": tc["rest_seconds"]} if "rest_seconds" in tc else {}),
+        **({"restSeconds": tc["restSeconds"]} if "restSeconds" in tc else {}),
+        **({"warmupRestSeconds": tc["warmup_rest_seconds"]} if "warmup_rest_seconds" in tc else {}),
+        **({"warmupRestSeconds": tc["warmupRestSeconds"]} if "warmupRestSeconds" in tc else {}),
+        **({"intervalSeconds": tc["interval_seconds"]} if "interval_seconds" in tc else {}),
+        **({"intervalSeconds": tc["intervalSeconds"]} if "intervalSeconds" in tc else {}),
+        **({"totalRounds": tc["total_rounds"]} if "total_rounds" in tc else {}),
+        **({"totalRounds": tc["totalRounds"]} if "totalRounds" in tc else {}),
+        **({"timeLimitSeconds": tc["time_limit_seconds"]} if "time_limit_seconds" in tc else {}),
+        **({"timeLimitSeconds": tc["timeLimitSeconds"]} if "timeLimitSeconds" in tc else {}),
+        **({"workSeconds": tc["work_seconds"]} if "work_seconds" in tc else {}),
+        **({"workSeconds": tc["workSeconds"]} if "workSeconds" in tc else {}),
+        **({"circuitRestSeconds": tc["circuit_rest_seconds"]} if "circuit_rest_seconds" in tc else {}),
+        **({"circuitRestSeconds": tc["circuitRestSeconds"]} if "circuitRestSeconds" in tc else {}),
+        **({"roundRestSeconds": tc["round_rest_seconds"]} if "round_rest_seconds" in tc else {}),
+        **({"roundRestSeconds": tc["roundRestSeconds"]} if "roundRestSeconds" in tc else {}),
+        **({"rounds": tc["rounds"]} if "rounds" in tc else {}),
+        **({"prepCountdownSeconds": tc["prep_countdown_seconds"]} if "prep_countdown_seconds" in tc else {}),
+        **({"prepCountdownSeconds": tc["prepCountdownSeconds"]} if "prepCountdownSeconds" in tc else {}),
+    }
+
+
+def _group_to_camel(g: dict) -> dict:
+    """Convert an exercise group dict to camelCase."""
+    return {
+        "groupId": g.get("group_id", g.get("groupId", "")),
+        "groupType": g.get("group_type", g.get("groupType", "single")),
+        "timerConfig": _timer_config_to_camel(g.get("timer_config", g.get("timerConfig", {"mode": "standard"}))),
+        "exercises": [_exercise_to_camel(ex) for ex in g.get("exercises", [])],
+        **({"notes": g["notes"]} if g.get("notes") else {}),
+    }
+
+
+def _flat_exercises_to_groups(exercises: list[dict]) -> list[dict]:
+    """Transform a flat v1 exercises list into exerciseGroups format (camelCase)."""
+    groups = []
+    for ex in exercises:
+        groups.append({
+            "groupId": str(uuid.uuid4()),
+            "groupType": "single",
+            "timerConfig": {"mode": "standard", "restSeconds": 90},
+            "exercises": [_exercise_to_camel(ex)],
+        })
+    return groups
+
+
 def _to_camel(row: dict) -> dict:
     """Convert a workout_sessions DB row to camelCase JSON."""
-    exercises = row.get("exercises")
-    if isinstance(exercises, str):
-        exercises = json.loads(exercises)
+    exercises_raw = row.get("exercises")
+    if isinstance(exercises_raw, str):
+        exercises_raw = json.loads(exercises_raw)
 
-    # Normalise exercise keys to camelCase
-    camel_exercises = []
-    if exercises:
-        for ex in exercises:
-            camel_exercises.append({
-                "name": ex.get("name", ""),
-                "sets": ex.get("sets", 0),
-                "reps": ex.get("reps", 0),
-                "youtubeUrl": ex.get("youtube_url", ex.get("youtubeUrl", "")),
-                "notes": ex.get("notes", ""),
-            })
+    schema_version = row.get("schema_version") or 1
+
+    if schema_version >= 2 and exercises_raw:
+        # Data is already in exercise_groups format (snake_case from agent) — convert to camelCase
+        exercise_groups = [_group_to_camel(g) for g in exercises_raw]
+    elif exercises_raw:
+        # v1 flat exercises — wrap into single-exercise groups
+        exercise_groups = _flat_exercises_to_groups(exercises_raw)
+    else:
+        exercise_groups = []
 
     return {
         "id": str(row["id"]),
@@ -35,7 +102,7 @@ def _to_camel(row: dict) -> dict:
         "scheduledDate": row["scheduled_date"].isoformat() if row.get("scheduled_date") else None,
         "title": row.get("title", ""),
         "status": row.get("status", "scheduled"),
-        "exercises": camel_exercises,
+        "exerciseGroups": exercise_groups,
         "startedAt": row["started_at"].isoformat() if row.get("started_at") else None,
         "completedAt": row["completed_at"].isoformat() if row.get("completed_at") else None,
         "createdAt": row["created_at"].isoformat() if row.get("created_at") else None,
@@ -55,7 +122,7 @@ async def list_sessions(
     rows = await fetch_all(
         conn,
         """SELECT id, user_id, plan_id, scheduled_date, title, status,
-                  exercises, started_at, completed_at, created_at
+                  exercises, started_at, completed_at, created_at, schema_version
            FROM workout_sessions
            WHERE user_id = $1 AND scheduled_date BETWEEN $2 AND $3
            ORDER BY scheduled_date""",
@@ -78,7 +145,7 @@ async def get_session(
     row = await fetch_one(
         conn,
         """SELECT id, user_id, plan_id, scheduled_date, title, status,
-                  exercises, started_at, completed_at, created_at
+                  exercises, started_at, completed_at, created_at, schema_version
            FROM workout_sessions
            WHERE id = $1 AND user_id = $2""",
         session_id,
@@ -114,7 +181,7 @@ async def start_session(
     updated = await fetch_one(
         conn,
         """SELECT id, user_id, plan_id, scheduled_date, title, status,
-                  exercises, started_at, completed_at, created_at
+                  exercises, started_at, completed_at, created_at, schema_version
            FROM workout_sessions WHERE id = $1""",
         session_id,
     )
@@ -146,7 +213,7 @@ async def complete_session(
     updated = await fetch_one(
         conn,
         """SELECT id, user_id, plan_id, scheduled_date, title, status,
-                  exercises, started_at, completed_at, created_at
+                  exercises, started_at, completed_at, created_at, schema_version
            FROM workout_sessions WHERE id = $1""",
         session_id,
     )
