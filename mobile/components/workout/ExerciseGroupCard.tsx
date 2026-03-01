@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Card, Badge, Button } from '../ui';
@@ -12,6 +12,8 @@ import type { ExerciseGroup } from '../../types';
 interface ExerciseGroupCardProps {
   group: ExerciseGroup;
   sessionId: string;
+  groupIndex?: number;
+  onStartFocus?: (index: number) => void;
 }
 
 const GROUP_BADGE: Record<string, { label: string; icon: string }> = {
@@ -45,23 +47,35 @@ function formatTimerSummary(group: ExerciseGroup): string | null {
   return null;
 }
 
-export function ExerciseGroupCard({ group, sessionId }: ExerciseGroupCardProps) {
+export function ExerciseGroupCard({ group, sessionId, groupIndex, onStartFocus }: ExerciseGroupCardProps) {
+  const handleFocus = useCallback(() => {
+    if (groupIndex != null && onStartFocus) onStartFocus(groupIndex);
+  }, [groupIndex, onStartFocus]);
+
   if (group.groupType === 'single') {
     return (
-      <ExerciseCard
-        exercise={group.exercises[0]}
-        sessionId={sessionId}
-        timerConfig={group.timerConfig}
-      />
+      <View>
+        <ExerciseCard
+          exercise={group.exercises[0]}
+          sessionId={sessionId}
+          timerConfig={group.timerConfig}
+        />
+        {onStartFocus && (
+          <TouchableOpacity style={styles.focusButton} onPress={handleFocus}>
+            <MaterialCommunityIcons name="play-circle-outline" size={20} color={colors.accent} />
+            <Text variant="labelSmall" style={styles.focusButtonText}>Focus Mode</Text>
+          </TouchableOpacity>
+        )}
+      </View>
     );
   }
 
   if (group.groupType === 'superset') {
-    return <SupersetGroupCard group={group} sessionId={sessionId} />;
+    return <SupersetGroupCard group={group} sessionId={sessionId} onStartFocus={onStartFocus ? handleFocus : undefined} />;
   }
 
   // Circuit / EMOM / AMRAP groups — show header + exercise list
-  return <TimedGroupCard group={group} sessionId={sessionId} />;
+  return <TimedGroupCard group={group} sessionId={sessionId} onStartFocus={onStartFocus ? handleFocus : undefined} />;
 }
 
 /**
@@ -71,7 +85,7 @@ export function ExerciseGroupCard({ group, sessionId }: ExerciseGroupCardProps) 
  * - Log set for B → rest timer fires
  * - After rest, A re-expands — cycle repeats
  */
-function SupersetGroupCard({ group, sessionId }: ExerciseGroupCardProps) {
+function SupersetGroupCard({ group, sessionId, onStartFocus }: ExerciseGroupCardProps & { onStartFocus?: () => void }) {
   const exerciseCount = group.exercises.length;
   const [activeIndex, setActiveIndex] = useState(0);
   const [restActive, setRestActive] = useState(false);
@@ -117,9 +131,16 @@ function SupersetGroupCard({ group, sessionId }: ExerciseGroupCardProps) {
             </Text>
           )}
         </View>
-        <Text variant="labelSmall" style={styles.roundIndicator}>
-          Set {supersetRound} of {totalSets}
-        </Text>
+        <View style={styles.groupHeaderRight}>
+          <Text variant="labelSmall" style={styles.roundIndicator}>
+            Set {supersetRound} of {totalSets}
+          </Text>
+          {onStartFocus && (
+            <TouchableOpacity onPress={onStartFocus} hitSlop={8}>
+              <MaterialCommunityIcons name="play-circle-outline" size={22} color={colors.accent} />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {group.notes && (
@@ -158,7 +179,7 @@ function SupersetGroupCard({ group, sessionId }: ExerciseGroupCardProps) {
  * Timed groups (EMOM, AMRAP, Circuit) — display header with badge,
  * exercise list, and start button for supported timer modes.
  */
-function TimedGroupCard({ group, sessionId }: ExerciseGroupCardProps) {
+function TimedGroupCard({ group, sessionId, onStartFocus }: ExerciseGroupCardProps & { onStartFocus?: () => void }) {
   const timerBadgeLabel = TIMER_BADGE[group.timerConfig.mode] ?? group.timerConfig.mode.toUpperCase();
   const timerSummary = formatTimerSummary(group);
   const [timerActive, setTimerActive] = useState(false);
@@ -191,11 +212,18 @@ function TimedGroupCard({ group, sessionId }: ExerciseGroupCardProps) {
             </Text>
           )}
         </View>
-        {isEmom && (
-          <Button size="small" onPress={() => setTimerActive(true)}>
-            Start EMOM
-          </Button>
-        )}
+        <View style={styles.groupHeaderRight}>
+          {isEmom && (
+            <Button size="small" onPress={() => setTimerActive(true)}>
+              Start EMOM
+            </Button>
+          )}
+          {onStartFocus && (
+            <TouchableOpacity onPress={onStartFocus} hitSlop={8}>
+              <MaterialCommunityIcons name="play-circle-outline" size={22} color={colors.accent} />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {group.notes && (
@@ -249,5 +277,22 @@ const styles = StyleSheet.create({
   groupRestContainer: {
     paddingHorizontal: spacing.base,
     paddingBottom: spacing.sm,
+  },
+  groupHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  focusButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    marginTop: -spacing.sm,
+    marginBottom: spacing.md,
+  },
+  focusButtonText: {
+    color: colors.accent,
   },
 });

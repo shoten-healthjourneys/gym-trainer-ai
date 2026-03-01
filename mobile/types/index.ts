@@ -63,6 +63,18 @@ export interface ExerciseInSession {
 export type TimerMode = 'standard' | 'emom' | 'amrap' | 'circuit';
 export type GroupType = 'single' | 'superset' | 'circuit';
 
+// ===== Focus Mode =====
+export type FocusPhase =
+  | 'idle'
+  | 'setActive'
+  | 'logging'
+  | 'resting'
+  | 'prep'
+  | 'work'
+  | 'circuitRest'
+  | 'roundRest'
+  | 'complete';
+
 export interface TimerConfig {
   mode: TimerMode;
 
