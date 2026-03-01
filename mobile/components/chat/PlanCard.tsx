@@ -12,13 +12,32 @@ interface PlanExercise {
   sets: number;
   reps: number;
   youtubeUrl?: string;
+  youtube_url?: string;
+  notes?: string;
+}
+
+interface PlanExerciseGroup {
+  group_type?: string;
+  groupType?: string;
+  timer_config?: Record<string, unknown>;
+  timerConfig?: Record<string, unknown>;
+  exercises: PlanExercise[];
   notes?: string;
 }
 
 interface PlanDay {
   day: string;
   title: string;
-  exercises: PlanExercise[];
+  exercises?: PlanExercise[];
+  exercise_groups?: PlanExerciseGroup[];
+}
+
+/** Extract a flat exercise list from a PlanDay, handling both old and new format. */
+function getExercises(day: PlanDay): PlanExercise[] {
+  if (day.exercise_groups && day.exercise_groups.length > 0) {
+    return day.exercise_groups.flatMap((g) => g.exercises);
+  }
+  return day.exercises ?? [];
 }
 
 type PlanCardProps = {
@@ -51,6 +70,7 @@ function getTextWithoutPlan(content: string): string {
 
 function DayCard({ day }: { day: PlanDay }) {
   const [expanded, setExpanded] = useState(false);
+  const exercises = getExercises(day);
 
   return (
     <Card style={styles.dayCard}>
@@ -64,7 +84,7 @@ function DayCard({ day }: { day: PlanDay }) {
               {day.day}
             </Text>
             <Text variant="bodySmall" style={styles.dayTitle}>
-              {day.title} ({day.exercises.length} exercises)
+              {day.title} ({exercises.length} exercises)
             </Text>
           </View>
           <MaterialCommunityIcons
@@ -76,7 +96,7 @@ function DayCard({ day }: { day: PlanDay }) {
       </TouchableOpacity>
       {expanded && (
         <View style={styles.exerciseList}>
-          {day.exercises.map((ex, i) => (
+          {exercises.map((ex, i) => (
             <View key={i} style={styles.exerciseRow}>
               <View style={styles.exerciseInfo}>
                 <Text variant="bodySmall" style={styles.exerciseName}>
@@ -86,9 +106,9 @@ function DayCard({ day }: { day: PlanDay }) {
                   {ex.sets} x {ex.reps}
                 </Text>
               </View>
-              {ex.youtubeUrl && (
+              {(ex.youtubeUrl || ex.youtube_url) && (
                 <TouchableOpacity
-                  onPress={() => Linking.openURL(ex.youtubeUrl!)}
+                  onPress={() => Linking.openURL((ex.youtubeUrl || ex.youtube_url)!)}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <MaterialCommunityIcons
