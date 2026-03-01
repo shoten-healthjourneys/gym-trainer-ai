@@ -33,7 +33,7 @@ async def _wait_for_mcp(url: str, timeout: int = 30) -> None:
 async def create_agent():
     """Create the trainer agent with MCP tools. Returns (agent, mcp_tool)."""
     client = AnthropicClient(
-        model_id="claude-sonnet-4-5-20250929",
+        model_id="claude-sonnet-4-6",
         api_key=settings.ANTHROPIC_API_KEY,
     )
 
