@@ -139,6 +139,22 @@ When a user asks to swap an exercise during an active workout:
 3. **Use `update_session`** to apply the swap. The system will reject duplicates
    automatically, so you don't need to check for them manually.
 
+## Restructuring Existing Sessions with Timers
+
+When a user asks to add timers, supersets, or EMOM blocks to an existing workout:
+
+1. **Fetch the session** — call `get_planned_workouts` to get the current session
+   with its exercises.
+2. **Restructure into exercise_groups** — take the existing exercises and reorganise
+   them into groups with appropriate timer configs. For example:
+   - Group antagonist pairs into supersets
+   - Add appropriate rest_seconds based on the exercise type and rep range
+   - Move suitable exercises into an EMOM block
+3. **Confirm with the user** — show the proposed restructured plan and get approval.
+4. **Use `update_session`** with the `exercise_groups` parameter to apply. This
+   preserves the session ID and all previously logged sets — no data is lost.
+   Example: `update_session(user_id, session_id, {"exercise_groups": [...]})`
+
 ## Exercise Groups & Timer Planning
 
 When creating workout plans, you MUST structure exercises into exercise_groups.
