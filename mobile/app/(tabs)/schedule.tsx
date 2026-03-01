@@ -27,6 +27,27 @@ function getAllExercises(session: WorkoutSession): ExerciseInSession[] {
   return session.exerciseGroups.flatMap((g) => g.exercises);
 }
 
+const TIMER_MODE_LABEL: Record<string, string> = {
+  emom: 'EMOM',
+  amrap: 'AMRAP',
+  circuit: 'Circuit',
+};
+
+function getSessionTimerBadges(session: WorkoutSession): string[] {
+  const badges: string[] = [];
+  const hasSupersets = session.exerciseGroups.some((g) => g.groupType === 'superset');
+  if (hasSupersets) badges.push('Supersets');
+
+  const timedModes = new Set<string>();
+  for (const g of session.exerciseGroups) {
+    if (g.timerConfig.mode !== 'standard') {
+      timedModes.add(TIMER_MODE_LABEL[g.timerConfig.mode] ?? g.timerConfig.mode.toUpperCase());
+    }
+  }
+  for (const mode of timedModes) badges.push(mode);
+  return badges;
+}
+
 function SessionCard({ session }: { session: WorkoutSession }) {
   const [expanded, setExpanded] = useState(false);
   const router = useRouter();
@@ -34,6 +55,7 @@ function SessionCard({ session }: { session: WorkoutSession }) {
   const isScheduled = session.status === 'scheduled';
   const isInProgress = session.status === 'in_progress';
   const allExercises = getAllExercises(session);
+  const timerBadges = getSessionTimerBadges(session);
 
   return (
     <Card style={styles.sessionCard}>
@@ -51,6 +73,9 @@ function SessionCard({ session }: { session: WorkoutSession }) {
             </Text>
           </View>
           <View style={styles.badges}>
+            {timerBadges.map((label) => (
+              <Badge key={label} label={label} variant="muted" />
+            ))}
             <Badge
               label={`${allExercises.length} exercises`}
               variant="accent"
@@ -69,28 +94,46 @@ function SessionCard({ session }: { session: WorkoutSession }) {
       </TouchableOpacity>
       {expanded && (
         <CardContent>
-          {allExercises.map((ex, i) => (
-            <View key={i} style={styles.exerciseRow}>
-              <View style={styles.exerciseInfo}>
-                <Text variant="bodySmall" style={styles.exerciseName}>
-                  {ex.name}
-                </Text>
-                <Text variant="labelSmall" style={styles.exerciseSets}>
-                  {ex.sets} x {ex.reps}
-                </Text>
-              </View>
-              {ex.youtubeUrl && (
-                <TouchableOpacity
-                  onPress={() => Linking.openURL(ex.youtubeUrl!)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
+          {session.exerciseGroups.map((group, gi) => (
+            <View key={group.groupId}>
+              {group.groupType !== 'single' && (
+                <View style={styles.groupLabel}>
                   <MaterialCommunityIcons
-                    name="youtube"
-                    size={20}
-                    color={colors.destructive}
+                    name={group.groupType === 'superset' ? 'swap-vertical' : 'timer-outline'}
+                    size={14}
+                    color={colors.accent}
                   />
-                </TouchableOpacity>
+                  <Text variant="labelSmall" style={styles.groupLabelText}>
+                    {group.groupType === 'superset'
+                      ? 'Superset'
+                      : TIMER_MODE_LABEL[group.timerConfig.mode] ?? group.timerConfig.mode.toUpperCase()}
+                  </Text>
+                </View>
               )}
+              {group.exercises.map((ex, i) => (
+                <View key={`${gi}-${i}`} style={styles.exerciseRow}>
+                  <View style={styles.exerciseInfo}>
+                    <Text variant="bodySmall" style={styles.exerciseName}>
+                      {group.groupType !== 'single' ? `  ${ex.name}` : ex.name}
+                    </Text>
+                    <Text variant="labelSmall" style={styles.exerciseSets}>
+                      {ex.sets} x {ex.reps}
+                    </Text>
+                  </View>
+                  {ex.youtubeUrl && (
+                    <TouchableOpacity
+                      onPress={() => Linking.openURL(ex.youtubeUrl!)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <MaterialCommunityIcons
+                        name="youtube"
+                        size={20}
+                        color={colors.destructive}
+                      />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
             </View>
           ))}
           {(isScheduled || isInProgress) && (
@@ -230,6 +273,17 @@ const styles = StyleSheet.create({
   exerciseSets: {
     color: colors.textMuted,
     marginTop: 2,
+  },
+  groupLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  groupLabelText: {
+    color: colors.accent,
   },
   center: {
     alignItems: 'center',
