@@ -97,6 +97,9 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS training_objective VARCHAR(1000);
 ALTER TABLE exercise_logs ADD COLUMN IF NOT EXISTS distance_m DECIMAL(7,1);
 ALTER TABLE exercise_logs ADD COLUMN IF NOT EXISTS duration_seconds INT;
 ALTER TABLE exercise_logs ALTER COLUMN reps DROP NOT NULL;
+
+ALTER TABLE workout_sessions ADD COLUMN IF NOT EXISTS schema_version INT DEFAULT 1;
+ALTER TABLE exercise_logs ADD COLUMN IF NOT EXISTS round_number INT;
 """
 
 

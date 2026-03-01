@@ -56,6 +56,43 @@ export interface ExerciseInSession {
   youtubeUrl?: string;
   notes?: string;
   exerciseType?: ExerciseType;
+  targetRpe?: number;
+}
+
+// ===== Timer & Exercise Groups =====
+export type TimerMode = 'standard' | 'emom' | 'amrap' | 'circuit';
+export type GroupType = 'single' | 'superset' | 'circuit';
+
+export interface TimerConfig {
+  mode: TimerMode;
+
+  // Standard mode — rest between sets
+  restSeconds?: number;
+  warmupRestSeconds?: number;
+
+  // EMOM mode
+  intervalSeconds?: number;
+  totalRounds?: number;
+
+  // AMRAP mode
+  timeLimitSeconds?: number;
+
+  // Circuit / Interval mode
+  workSeconds?: number;
+  circuitRestSeconds?: number;
+  roundRestSeconds?: number;
+  rounds?: number;
+
+  // Shared
+  prepCountdownSeconds?: number;
+}
+
+export interface ExerciseGroup {
+  groupId: string;
+  groupType: GroupType;
+  timerConfig: TimerConfig;
+  exercises: ExerciseInSession[];
+  notes?: string;
 }
 
 export interface WorkoutSession {
@@ -65,7 +102,9 @@ export interface WorkoutSession {
   scheduledDate: string;
   title: string;
   status: SessionStatus;
-  exercises: ExerciseInSession[];
+  exerciseGroups: ExerciseGroup[];
+  /** @deprecated Use exerciseGroups — kept for backward compat during migration */
+  exercises?: ExerciseInSession[];
   startedAt?: string;
   completedAt?: string;
   createdAt: string;
@@ -83,6 +122,7 @@ export interface ExerciseLog {
   distanceM?: number;
   durationSeconds?: number;
   rpe?: number;
+  roundNumber?: number;
   notes?: string;
   loggedAt: string;
 }

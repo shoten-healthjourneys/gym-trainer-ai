@@ -10,15 +10,34 @@ import { SetLogger } from './SetLogger';
 import { RestTimer } from './RestTimer';
 import { VoiceButton } from './VoiceButton';
 import { ManualSetDialog } from './ManualSetDialog';
-import type { ExerciseInSession } from '../../types';
+import type { ExerciseInSession, TimerConfig } from '../../types';
 
 interface ExerciseCardProps {
   exercise: ExerciseInSession;
   sessionId: string;
+  timerConfig?: TimerConfig;
+  /** If provided, controls expansion from parent (superset flow) */
+  expanded?: boolean;
+  onToggleExpand?: () => void;
+  /** Suppress rest timer — parent manages it (superset groups) */
+  suppressRest?: boolean;
+  /** Callback when a set is logged (for superset flow) */
+  onSetLogged?: () => void;
 }
 
-export function ExerciseCard({ exercise, sessionId }: ExerciseCardProps) {
-  const [expanded, setExpanded] = useState(true);
+export function ExerciseCard({
+  exercise,
+  sessionId,
+  timerConfig,
+  expanded: controlledExpanded,
+  onToggleExpand,
+  suppressRest,
+  onSetLogged,
+}: ExerciseCardProps) {
+  const [internalExpanded, setInternalExpanded] = useState(true);
+  const expanded = controlledExpanded ?? internalExpanded;
+  const toggleExpand = onToggleExpand ?? (() => setInternalExpanded((prev) => !prev));
+
   const [addDialogVisible, setAddDialogVisible] = useState(false);
   const [snackMessage, setSnackMessage] = useState('');
   const [micAllowed, setMicAllowed] = useState(false);
@@ -27,6 +46,8 @@ export function ExerciseCard({ exercise, sessionId }: ExerciseCardProps) {
   const prevLogsLength = useRef(logs.length);
   const logSet = useWorkoutStore((s) => s.logSet);
   const fetchExerciseLogs = useWorkoutStore((s) => s.fetchExerciseLogs);
+
+  const restSeconds = timerConfig?.restSeconds ?? 90;
 
   useEffect(() => {
     fetchExerciseLogs(sessionId, exercise.name);
@@ -37,9 +58,12 @@ export function ExerciseCard({ exercise, sessionId }: ExerciseCardProps) {
   }, []);
 
   useEffect(() => {
-    if (logs.length > prevLogsLength.current) setRestActive(true);
+    if (logs.length > prevLogsLength.current) {
+      if (!suppressRest) setRestActive(true);
+      onSetLogged?.();
+    }
     prevLogsLength.current = logs.length;
-  }, [logs.length]);
+  }, [logs.length, suppressRest, onSetLogged]);
 
   const handleManualAdd = useCallback(
     (data: { weightKg?: number; reps?: number; distanceM?: number; durationSeconds?: number; rpe?: number }) => {
@@ -51,7 +75,7 @@ export function ExerciseCard({ exercise, sessionId }: ExerciseCardProps) {
   return (
     <Card style={styles.card}>
       <TouchableOpacity
-        onPress={() => setExpanded((prev) => !prev)}
+        onPress={toggleExpand}
         activeOpacity={0.7}
       >
         <View style={styles.header}>
@@ -89,7 +113,7 @@ export function ExerciseCard({ exercise, sessionId }: ExerciseCardProps) {
           />
           {restActive && (
             <RestTimer
-              durationSeconds={90}
+              durationSeconds={restSeconds}
               onDismiss={() => setRestActive(false)}
               onComplete={() => setRestActive(false)}
             />
