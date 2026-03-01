@@ -15,6 +15,9 @@ from app.exercise_resolver import resolve_exercise_name
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger("mcp.tools")
 
+_VALID_TIMER_MODES = {"standard", "emom", "amrap", "circuit"}
+_VALID_GROUP_TYPES = {"single", "superset", "circuit"}
+
 mcp = FastMCP(name="gym-tools")
 
 _pool: asyncpg.Pool | None = None
@@ -35,6 +38,50 @@ async def _get_pool() -> asyncpg.Pool:
     if _pool is None:
         _pool = await asyncpg.create_pool(dsn=settings.DATABASE_URL)
     return _pool
+
+
+def _wrap_flat_exercises_as_groups(exercises: list[dict]) -> list[dict]:
+    """Wrap a flat exercises list into single-exercise groups with standard timer config.
+
+    Used for backward compatibility when the agent sends `exercises` instead of
+    `exercise_groups`.
+    """
+    groups = []
+    for ex in exercises:
+        groups.append({
+            "group_id": str(uuid.uuid4()),
+            "group_type": "single",
+            "timer_config": {"mode": "standard", "rest_seconds": 90},
+            "exercises": [ex],
+        })
+    return groups
+
+
+def _normalise_session_groups(session: dict) -> tuple[list[dict], int]:
+    """Extract exercise_groups from a session dict, handling both old and new format.
+
+    Returns (exercise_groups, schema_version).
+    If agent sends exercise_groups, schema_version is 2.
+    If agent sends exercises (flat), wraps into groups and schema_version is 2.
+    """
+    if "exercise_groups" in session and session["exercise_groups"]:
+        groups = session["exercise_groups"]
+        # Ensure each group has a group_id
+        for g in groups:
+            if "group_id" not in g:
+                g["group_id"] = str(uuid.uuid4())
+        return groups, 2
+    elif "exercises" in session:
+        return _wrap_flat_exercises_as_groups(session.get("exercises", [])), 2
+    return [], 2
+
+
+async def _resolve_exercises_in_groups(conn, groups: list[dict]) -> None:
+    """Resolve exercise names to canonical forms within exercise groups."""
+    for group in groups:
+        for exercise in group.get("exercises", []):
+            if exercise.get("name"):
+                exercise["name"] = await resolve_exercise_name(conn, exercise["name"])
 
 
 @mcp.tool()
@@ -226,7 +273,16 @@ async def get_planned_workouts(
 async def save_workout_plan(user_id: str, week_start: str, sessions: list[dict]) -> dict:
     """Save a workout plan and create individual workout sessions.
     Each session dict must have: 'day' (e.g. 'Monday'), 'title' (e.g. 'Leg Day'),
-    and 'exercises' (list of exercise dicts with 'name', 'sets', 'reps', etc.)."""
+    and either 'exercise_groups' (list of group dicts with 'group_type', 'timer_config',
+    'exercises') OR 'exercises' (flat list for backward compat).
+
+    exercise_groups format (preferred):
+      [{"group_type": "single"|"superset"|"circuit",
+        "timer_config": {"mode": "standard", "rest_seconds": 120},
+        "exercises": [{"name": "...", "sets": 4, "reps": 8}]}]
+
+    exercises format (backward compat — auto-wrapped into single-exercise groups):
+      [{"name": "...", "sets": 4, "reps": 8}]"""
     logger.info("[save_workout_plan] user_id=%s, week_start=%s, sessions=%d", user_id, week_start, len(sessions))
     plan_data = {"sessions": sessions}
     start = date.fromisoformat(week_start)
@@ -269,20 +325,22 @@ async def save_workout_plan(user_id: str, week_start: str, sessions: list[dict])
                     continue
                 scheduled = start + timedelta(days=offset)
                 session_id = uuid.uuid4()
-                # Resolve exercise names to canonical forms
-                for exercise in session.get("exercises", []):
-                    if exercise.get("name"):
-                        exercise["name"] = await resolve_exercise_name(conn, exercise["name"])
+
+                # Normalise to exercise_groups format
+                exercise_groups, schema_version = _normalise_session_groups(session)
+                await _resolve_exercises_in_groups(conn, exercise_groups)
+
                 await conn.execute(
                     """INSERT INTO workout_sessions
-                       (id, user_id, plan_id, scheduled_date, title, exercises)
-                       VALUES ($1, $2, $3, $4, $5, $6)""",
+                       (id, user_id, plan_id, scheduled_date, title, exercises, schema_version)
+                       VALUES ($1, $2, $3, $4, $5, $6, $7)""",
                     session_id,
                     uid,
                     plan_id,
                     scheduled,
                     session.get("title", "Workout"),
-                    json.dumps(session.get("exercises", [])),
+                    json.dumps(exercise_groups),
+                    schema_version,
                 )
                 sessions_created += 1
 
@@ -296,21 +354,40 @@ async def save_workout_plan(user_id: str, week_start: str, sessions: list[dict])
 
 
 @mcp.tool()
-async def add_session_to_week(user_id: str, week_start: str, day: str, title: str, exercises: list[dict]) -> dict:
+async def add_session_to_week(
+    user_id: str,
+    week_start: str,
+    day: str,
+    title: str,
+    exercises: list[dict] | None = None,
+    exercise_groups: list[dict] | None = None,
+) -> dict:
     """Add a single workout session to an existing week without modifying other sessions.
     If a session already exists on that day, it will be replaced.
     day: full day name (e.g. 'Tuesday') or abbreviation (e.g. 'Tue').
     title: session name (e.g. 'Leg Day').
-    exercises: list of exercise dicts with 'name', 'sets', 'reps', etc."""
+
+    Provide EITHER exercise_groups (preferred) OR exercises (backward compat):
+      exercise_groups: list of group dicts with 'group_type', 'timer_config', 'exercises'
+      exercises: flat list of exercise dicts with 'name', 'sets', 'reps', etc."""
     logger.info("[add_session_to_week] user_id=%s, week_start=%s, day=%s", user_id, week_start, day)
-    session_data = {"day": day, "title": title, "exercises": exercises}
+
+    # Build a session dict so _normalise_session_groups can handle both formats
+    session_data: dict = {"day": day, "title": title}
+    if exercise_groups is not None:
+        session_data["exercise_groups"] = exercise_groups
+    elif exercises is not None:
+        session_data["exercises"] = exercises
+    else:
+        return {"error": "Provide either 'exercises' or 'exercise_groups'."}
+
     start = date.fromisoformat(week_start)
     uid = uuid.UUID(user_id)
 
-    day_name = session_data.get("day", "").strip().lower()
+    day_name = day.strip().lower()
     offset = _DAY_OFFSETS.get(day_name)
     if offset is None:
-        return {"error": f"Invalid day: {session_data.get('day')}. Use full day names (e.g. Monday, Sunday) or abbreviations (e.g. Mon, Sun)."}
+        return {"error": f"Invalid day: {day}. Use full day names (e.g. Monday, Sunday) or abbreviations (e.g. Mon, Sun)."}
     scheduled = start + timedelta(days=offset)
 
     pool = await _get_pool()
@@ -338,25 +415,25 @@ async def add_session_to_week(user_id: str, week_start: str, day: str, title: st
                 uid, scheduled, plan_id,
             )
 
-            # Resolve exercise names to canonical forms
-            for exercise in session_data.get("exercises", []):
-                if exercise.get("name"):
-                    exercise["name"] = await resolve_exercise_name(conn, exercise["name"])
+            # Normalise to exercise_groups format
+            groups, schema_version = _normalise_session_groups(session_data)
+            await _resolve_exercises_in_groups(conn, groups)
 
             session_id = uuid.uuid4()
             await conn.execute(
                 """INSERT INTO workout_sessions
-                   (id, user_id, plan_id, scheduled_date, title, exercises)
-                   VALUES ($1, $2, $3, $4, $5, $6)""",
+                   (id, user_id, plan_id, scheduled_date, title, exercises, schema_version)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7)""",
                 session_id, uid, plan_id, scheduled,
-                session_data.get("title", "Workout"),
-                json.dumps(session_data.get("exercises", [])),
+                title,
+                json.dumps(groups),
+                schema_version,
             )
 
     result = {
         "session_id": str(session_id),
         "scheduled_date": scheduled.isoformat(),
-        "message": f"Session added for {session_data.get('day')} ({scheduled.isoformat()}).",
+        "message": f"Session added for {day} ({scheduled.isoformat()}).",
     }
     logger.info("[add_session_to_week] done: %s", result)
     return result
@@ -365,7 +442,8 @@ async def add_session_to_week(user_id: str, week_start: str, day: str, title: st
 @mcp.tool()
 async def update_session(user_id: str, session_id: str, updates: dict) -> dict:
     """Update an existing workout session's title, exercises, or scheduled date.
-    updates dict can contain: 'title' (str), 'exercises' (list of exercise dicts),
+    updates dict can contain: 'title' (str), 'exercise_groups' (list of group dicts),
+    'exercises' (flat list — backward compat, auto-wrapped into groups),
     'scheduled_date' (ISO date string like '2026-03-05'). Include only the fields to change."""
     logger.info("[update_session] user_id=%s, session_id=%s", user_id, session_id)
     updates_data = updates
@@ -391,14 +469,15 @@ async def update_session(user_id: str, session_id: str, updates: dict) -> dict:
             set_clauses.append(f"title = ${param_idx}")
             params.append(updates_data["title"])
 
-        if "exercises" in updates_data:
-            # Resolve exercise names to canonical forms
-            for exercise in updates_data["exercises"]:
-                if exercise.get("name"):
-                    exercise["name"] = await resolve_exercise_name(conn, exercise["name"])
+        if "exercise_groups" in updates_data or "exercises" in updates_data:
+            # Normalise to exercise_groups format
+            groups, schema_version = _normalise_session_groups(updates_data)
+            await _resolve_exercises_in_groups(conn, groups)
 
-            # Duplicate exercise guard: check for duplicate names in the exercise list
-            exercise_names = [e["name"] for e in updates_data["exercises"] if e.get("name")]
+            # Duplicate exercise guard: check for duplicate names across all groups
+            exercise_names = [
+                e["name"] for g in groups for e in g.get("exercises", []) if e.get("name")
+            ]
             seen = set()
             duplicates = set()
             for name in exercise_names:
@@ -411,7 +490,11 @@ async def update_session(user_id: str, session_id: str, updates: dict) -> dict:
 
             param_idx += 1
             set_clauses.append(f"exercises = ${param_idx}")
-            params.append(json.dumps(updates_data["exercises"]))
+            params.append(json.dumps(groups))
+
+            param_idx += 1
+            set_clauses.append(f"schema_version = ${param_idx}")
+            params.append(schema_version)
 
         if "scheduled_date" in updates_data:
             param_idx += 1
@@ -419,7 +502,7 @@ async def update_session(user_id: str, session_id: str, updates: dict) -> dict:
             params.append(date.fromisoformat(updates_data["scheduled_date"]))
 
         if not set_clauses:
-            return {"error": "No valid fields to update. Provide 'title', 'exercises', and/or 'scheduled_date'."}
+            return {"error": "No valid fields to update. Provide 'title', 'exercise_groups', 'exercises', and/or 'scheduled_date'."}
 
         query = f"UPDATE workout_sessions SET {', '.join(set_clauses)} WHERE id = $1"
         await conn.execute(query, sid, *params)
