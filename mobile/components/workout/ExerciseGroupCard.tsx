@@ -2,9 +2,10 @@ import React, { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Card, Badge } from '../ui';
+import { Card, Badge, Button } from '../ui';
 import { ExerciseCard } from './ExerciseCard';
 import { RestTimer } from './RestTimer';
+import { EmomTimer } from './EmomTimer';
 import { colors, spacing } from '../../theme';
 import type { ExerciseGroup } from '../../types';
 
@@ -154,12 +155,25 @@ function SupersetGroupCard({ group, sessionId }: ExerciseGroupCardProps) {
 }
 
 /**
- * Timed groups (EMOM, AMRAP, Circuit) — display header with badge
- * and exercise list. Timer components will be integrated in later tasks.
+ * Timed groups (EMOM, AMRAP, Circuit) — display header with badge,
+ * exercise list, and start button for supported timer modes.
  */
 function TimedGroupCard({ group, sessionId }: ExerciseGroupCardProps) {
   const timerBadgeLabel = TIMER_BADGE[group.timerConfig.mode] ?? group.timerConfig.mode.toUpperCase();
   const timerSummary = formatTimerSummary(group);
+  const [timerActive, setTimerActive] = useState(false);
+
+  const isEmom = group.timerConfig.mode === 'emom';
+
+  if (timerActive && isEmom) {
+    return (
+      <EmomTimer
+        group={group}
+        sessionId={sessionId}
+        onComplete={() => setTimerActive(false)}
+      />
+    );
+  }
 
   return (
     <Card style={styles.groupCard}>
@@ -177,6 +191,11 @@ function TimedGroupCard({ group, sessionId }: ExerciseGroupCardProps) {
             </Text>
           )}
         </View>
+        {isEmom && (
+          <Button size="small" onPress={() => setTimerActive(true)}>
+            Start EMOM
+          </Button>
+        )}
       </View>
 
       {group.notes && (
