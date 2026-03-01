@@ -149,6 +149,8 @@ jobs:
 
       - name: Publish OTA update
         run: cd mobile && eas update --channel preview --message "$(git log -1 --pretty=%s)" --non-interactive
+        env:
+          EXPO_PUBLIC_API_URL: https://gym-trainer-api.bluehill-f327b734.uksouth.azurecontainerapps.io
 
   production-build:
     needs: lint-and-test
