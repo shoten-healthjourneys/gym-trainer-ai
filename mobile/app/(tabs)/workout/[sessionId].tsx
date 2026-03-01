@@ -4,11 +4,11 @@ import { Text } from 'react-native-paper';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ScreenContainer, Button } from '../../../components/ui';
-import { ExerciseCard } from '../../../components/workout';
+import { ExerciseGroupCard } from '../../../components/workout';
 import { useWorkoutStore } from '../../../stores/workoutStore';
 import { get } from '../../../services/api';
 import { colors, spacing } from '../../../theme';
-import type { ExerciseInSession, WorkoutSession } from '../../../types';
+import type { ExerciseGroup, WorkoutSession } from '../../../types';
 
 export default function ActiveWorkoutScreen() {
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
@@ -95,9 +95,9 @@ export default function ActiveWorkoutScreen() {
     }
   }, [sessionId, completeSession, router]);
 
-  const renderExercise = useCallback(
-    ({ item }: { item: ExerciseInSession }) => (
-      <ExerciseCard exercise={item} sessionId={sessionId!} />
+  const renderGroup = useCallback(
+    ({ item }: { item: ExerciseGroup }) => (
+      <ExerciseGroupCard group={item} sessionId={sessionId!} />
     ),
     [sessionId],
   );
@@ -127,9 +127,9 @@ export default function ActiveWorkoutScreen() {
       </View>
 
       <FlatList
-        data={activeSession.exerciseGroups.flatMap((g) => g.exercises)}
-        keyExtractor={(item) => item.name}
-        renderItem={renderExercise}
+        data={activeSession.exerciseGroups}
+        keyExtractor={(item) => item.groupId}
+        renderItem={renderGroup}
         contentContainerStyle={styles.list}
       />
 
