@@ -64,13 +64,20 @@ function SessionCard({ session }: { session: WorkoutSession }) {
         activeOpacity={0.7}
       >
         <View style={styles.sessionHeader}>
-          <View style={styles.sessionInfo}>
-            <Text variant="titleSmall" style={styles.dayLabel}>
-              {dayLabel}
-            </Text>
-            <Text variant="bodyMedium" style={styles.sessionTitle}>
-              {session.title}
-            </Text>
+          <View style={styles.sessionHeaderTop}>
+            <View style={styles.sessionInfo}>
+              <Text variant="titleSmall" style={styles.dayLabel}>
+                {dayLabel}
+              </Text>
+              <Text variant="bodyMedium" style={styles.sessionTitle}>
+                {session.title}
+              </Text>
+            </View>
+            <MaterialCommunityIcons
+              name={expanded ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color={colors.textMuted}
+            />
           </View>
           <View style={styles.badges}>
             {timerBadges.map((label) => (
@@ -85,11 +92,6 @@ function SessionCard({ session }: { session: WorkoutSession }) {
               variant={STATUS_VARIANT[session.status]}
             />
           </View>
-          <MaterialCommunityIcons
-            name={expanded ? 'chevron-up' : 'chevron-down'}
-            size={20}
-            color={colors.textMuted}
-          />
         </View>
       </TouchableOpacity>
       {expanded && (
@@ -237,9 +239,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   sessionHeader: {
+    padding: spacing.base,
+    gap: spacing.sm,
+  },
+  sessionHeaderTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.base,
     gap: spacing.sm,
   },
   sessionInfo: {
@@ -254,6 +259,7 @@ const styles = StyleSheet.create({
   },
   badges: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.xs,
   },
   exerciseRow: {
