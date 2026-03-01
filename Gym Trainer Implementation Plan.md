@@ -1,10 +1,11 @@
-# GymTrainer — React Native App Project Plan v2
+# GymTrainer — Project Plan
 
 ## Overview
 
-A personal AI-powered gym trainer app for Android. Chat with a Claude-powered agent (via Microsoft Agent Framework) that plans balanced weekly workouts, finds YouTube demos for exercises, and tracks progressive overload via voice logging during sessions. Backend runs on Azure, tools exposed via MCP, infrastructure managed with Terraform.
+A personal AI-powered gym trainer app for Android. Chat with a Claude-powered agent that plans balanced weekly workouts, finds YouTube demos for exercises, and tracks progressive overload via voice logging during sessions. Backend runs on Azure, tools exposed via MCP, infrastructure managed with Terraform.
 
-> **Auth Simplification (MVP):** The original plan used Azure AD B2C with Google Sign-In as the identity provider. For the MVP phase, auth has been simplified to **email/password registration and login** with bcrypt password hashing and HS256 JWT tokens issued directly by the FastAPI backend. No external auth provider is required. The `infra/modules/auth/` Terraform module (CIAM) is commented out and not deployed.
+> **Implementation archive:** Phase-by-phase execution logs, build failure history, and deployment
+> troubleshooting are in `docs/Implementation Plan Archive.md`.
 
 ---
 
@@ -12,21 +13,21 @@ A personal AI-powered gym trainer app for Android. Chat with a Claude-powered ag
 
 | Layer | Technology |
 |---|---|
-| **Mobile Framework** | React Native (Expo managed workflow), Android only |
+| **Mobile** | React Native (Expo SDK 54, managed workflow), Android only |
 | **Agent Orchestration** | Microsoft Agent Framework (`agent-framework-anthropic`) |
-| **AI Models** | Claude Sonnet (planning agent), Claude Haiku (voice parsing) |
-| **Tool Protocol** | Model Context Protocol (MCP) — HTTP transport |
-| **Backend Runtime** | Python (FastAPI) on Azure Container Apps |
-| **Database** | Azure PostgreSQL Flexible Server |
+| **AI Model** | Claude Sonnet 4.6 (planning agent), Claude Haiku 4.5 (voice parsing) |
+| **Tool Protocol** | Model Context Protocol (MCP) — Streamable HTTP transport |
+| **Backend** | Python (FastAPI) on Azure Container Apps |
+| **Database** | Azure PostgreSQL Flexible Server (v16) |
 | **Auth** | Email/password with bcrypt + HS256 JWT (backend-issued) |
-| **Voice (primary)** | Android native STT (TBD — `@react-native-voice/voice` removed due to AndroidX conflicts) |
-| **Voice (fallback)** | Deepgram streaming API |
+| **Voice** | Deepgram STT → Claude Haiku parsing |
 | **Design System** | React Native Paper (Material Design 3) |
-| **Charts** | `react-native-chart-kit` (may need replacing — no New Architecture support) |
 | **State** | Zustand |
-| **Navigation** | Expo Router |
+| **Navigation** | Expo Router (file-based) |
 | **Infrastructure** | Terraform (azurerm provider) |
-| **Streaming** | Server-Sent Events (SSE) |
+| **Streaming** | Server-Sent Events (SSE) via XMLHttpRequest |
+| **CI/CD** | GitHub Actions (path-filtered) + EAS Build |
+| **OTA Updates** | expo-updates (EAS Update, `appVersion` runtime policy) |
 
 ---
 
@@ -123,67 +124,28 @@ sequenceDiagram
     participant Claude as Claude Sonnet
     participant MCP as MCP Tool Server
     participant DB as Azure PostgreSQL
-    participant YT as YouTube API
 
-    U->>App: "Plan my workouts for this week. I can train Mon, Wed, Fri, Sat"
-    App->>API: POST /chat/stream {message, user_id}
-    API->>DB: Fetch chat history
-    DB-->>API: Previous messages
-
-    API->>AF: agent.run_stream(message, history)
+    U->>App: "Plan my workouts for this week"
+    App->>API: POST /chat/stream {message}
+    API->>DB: Fetch chat history (last 20 messages)
+    API->>AF: agent.run(conversation, stream=True)
     AF->>Claude: Messages API (streaming)
 
-    Note over Claude: Reasoning begins
-    Claude-->>AF: TextReasoningContent: "Checking user profile..."
-    AF-->>API: Stream event
-    API-->>App: SSE: {"type":"thinking","text":"Checking user profile..."}
-    App->>U: Show thinking indicator
-
     Claude->>AF: ToolUse: get_user_profile
-    AF->>MCP: Call get_user_profile
-    MCP->>DB: SELECT * FROM profiles WHERE id = ?
-    DB-->>MCP: {goals: ["hypertrophy"], experience: "intermediate", available_days: 4}
+    AF->>MCP: Call tool
+    MCP->>DB: Query profile
     MCP-->>AF: Profile data
-    AF-->>API: Stream event
-    API-->>App: SSE: {"type":"tool","name":"get_user_profile","status":"complete"}
-    App->>U: Show "✓ Loaded your profile"
+    API-->>App: SSE: {"type":"tool_start","name":"get_user_profile"}
+    API-->>App: SSE: {"type":"tool_done","name":"get_user_profile"}
 
-    Claude->>AF: ToolUse: get_exercise_history("Barbell Bench Press")
-    AF->>MCP: Call get_exercise_history
-    MCP->>DB: SELECT * FROM exercise_logs WHERE exercise_name = ? ORDER BY logged_at DESC
-    DB-->>MCP: [{weight_kg: 80, reps: 10, date: "2026-02-19"}, ...]
-    MCP-->>AF: History data
-    AF-->>API: Stream event
-    API-->>App: SSE: {"type":"tool","name":"get_exercise_history","status":"complete"}
-    App->>U: Show "✓ Retrieved bench press history"
-
-    Claude->>AF: ToolUse: search_youtube("barbell bench press form guide")
-    AF->>MCP: Call search_youtube
-    MCP->>YT: YouTube Data API search
-    YT-->>MCP: {videoId: "abc123", title: "Perfect Bench Press Form"}
-    MCP-->>AF: YouTube URL
-    AF-->>API: Stream event
-    API-->>App: SSE: {"type":"tool","name":"search_youtube","status":"complete"}
-
-    Note over Claude: Generates plan token by token
-    Claude-->>AF: TextContent: "Here's your plan for this week..."
-    AF-->>API: Stream tokens
+    Claude-->>AF: TextContent (streamed token by token)
     API-->>App: SSE: {"type":"text","text":"Here's your plan..."}
-    App->>U: Render text token by token
 
-    Claude->>AF: ToolUse: save_workout_plan({...structured plan...})
-    AF->>MCP: Call save_workout_plan
-    MCP->>DB: INSERT INTO workout_plans + INSERT INTO workout_sessions
-    DB-->>MCP: OK
-    MCP-->>AF: Plan saved
-    AF-->>API: Stream event
-    API-->>App: SSE: {"type":"tool","name":"save_workout_plan","status":"complete"}
-
-    Claude-->>AF: TextContent: "Your plan is saved! Tap any workout to see exercises."
-    AF-->>API: Final tokens
-    API-->>App: SSE: {"type":"text","text":"Your plan is saved!"}
+    Claude->>AF: ToolUse: save_workout_plan
+    AF->>MCP: Call tool
+    MCP->>DB: INSERT plan + sessions
+    API-->>App: SSE: {"type":"tool_done","name":"save_workout_plan"}
     API-->>App: SSE: {"type":"done"}
-    App->>U: Render complete message + "Apply Plan" card
 ```
 
 ### 3. Voice Logging During Workout
@@ -192,71 +154,28 @@ sequenceDiagram
 sequenceDiagram
     participant U as User
     participant App as React Native App
-    participant STT as Android STT
-    participant DG as Deepgram (fallback)
     participant API as FastAPI
+    participant DG as Deepgram STT
     participant Haiku as Claude Haiku
     participant DB as Azure PostgreSQL
 
-    U->>App: Hold mic button
-    App->>STT: Start recognition
-
-    U->>STT: "Same weight ten reps"
-    STT-->>App: Transcript: "same weight ten reps"
-    App->>App: Release mic button
-
-    App->>API: POST /voice/parse {transcript, exercise: "Barbell Bench Press", previous_sets: [{weight_kg: 80, reps: 8}]}
-
-    API->>Haiku: Messages API (non-streaming)
-    Note over Haiku: System: "You are a gym set logger..."
-    Note over Haiku: Parses with context of current exercise + previous sets
-    Haiku-->>API: {"sets": [{"weight_kg": 80, "reps": 10, "rpe": null}]}
-
-    API->>API: Validate JSON schema
-    API->>DB: INSERT INTO exercise_logs (exercise_name, set_number, weight_kg, reps)
-    DB-->>API: OK
-    API-->>App: 200 {parsed: {weight_kg: 80, reps: 10}, set_number: 2}
-
-    App->>App: Haptic feedback + visual confirmation
-    App->>U: Show "Set 2: 80kg × 10 ✓"
-
-    Note over U,App: Fallback path if STT fails
-    U->>App: Hold mic button (STT fails/poor quality)
-    App->>DG: Start Deepgram stream (WebSocket)
-    U->>DG: Audio stream
-    DG-->>App: Transcript with custom vocabulary boost
-    App->>API: POST /voice/parse {transcript, ...}
-    Note over API: Same Haiku parsing flow
+    U->>App: Tap mic (toggle on)
+    App->>App: Start recording (expo-av)
+    U->>App: Tap mic again (toggle off)
+    App->>API: POST /voice/parse {audio, exercise, previous_sets}
+    API->>DG: Transcribe audio
+    DG-->>API: "same weight ten reps"
+    API->>Haiku: Parse transcript with context
+    Haiku-->>API: {"sets": [{"weight_kg": 80, "reps": 10}]}
+    API-->>App: {transcript, parsed}
+    App->>U: Confirmation dialog: "80kg × 10"
+    U->>App: Tap "Log Set"
+    App->>API: POST /api/exercises/log
+    API->>DB: INSERT INTO exercise_logs
+    App->>U: "Set 2: 80kg × 10 ✓"
 ```
 
-### 4. Progressive Overload View
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant App as React Native App
-    participant API as FastAPI
-    participant DB as Azure PostgreSQL
-
-    U->>App: Navigate to Progress tab
-    App->>API: GET /exercises/names?user_id=xxx
-    API->>DB: SELECT DISTINCT exercise_name FROM exercise_logs WHERE user_id = ?
-    DB-->>API: ["Barbell Bench Press", "Overhead Press", "Squat", ...]
-    API-->>App: Exercise name list
-    App->>U: Show exercise picker
-
-    U->>App: Select "Barbell Bench Press"
-    App->>API: GET /exercises/history?name=Barbell+Bench+Press&range=3months
-    API->>DB: SELECT weight_kg, reps, logged_at FROM exercise_logs WHERE exercise_name = ? AND logged_at > ? ORDER BY logged_at
-    DB-->>API: [{date: "2026-01-05", weight_kg: 70, reps: 10}, {date: "2026-01-12", weight_kg: 72.5, reps: 10}, ...]
-    API-->>App: Time-series data
-
-    App->>App: Render line chart (weight over time)
-    App->>App: Render history table (date, sets × reps × weight)
-    App->>U: Display progress view
-```
-
-### 5. Starting a Scheduled Workout
+### 4. Browse Schedule & Start Workout
 
 ```mermaid
 sequenceDiagram
@@ -266,551 +185,77 @@ sequenceDiagram
     participant DB as Azure PostgreSQL
 
     U->>App: Navigate to Schedule tab
-    App->>API: GET /sessions?week_start=2026-02-23
-    API->>DB: SELECT * FROM workout_sessions WHERE scheduled_date BETWEEN ? AND ?
-    DB-->>API: [{id: "s1", title: "Push Day", scheduled_date: "2026-02-23", exercises: [...]}]
+    App->>API: GET /api/sessions?week_start=2026-03-02
+    API->>DB: SELECT sessions for week
     API-->>App: Session list
-    App->>U: Show workout cards
+    App->>U: Show workout cards (Mon—Push, Wed—Pull, etc.)
 
-    U->>App: Tap "Push Day" card
-    App->>API: PATCH /sessions/s1 {status: "in_progress", started_at: now()}
-    API->>DB: UPDATE workout_sessions SET status = 'in_progress', started_at = now()
-    DB-->>API: OK
-    API-->>App: 200
+    U->>App: Tap "Start Workout" on Push Day
+    App->>API: PATCH /sessions/{id} {status: "in_progress"}
+    App->>U: Show active workout screen with exercises
 
-    App->>API: GET /exercises/last-best?names=["Barbell Bench Press","OHP",...]
-    API->>DB: SELECT exercise_name, MAX(weight_kg), reps FROM exercise_logs GROUP BY exercise_name
-    DB-->>API: [{exercise: "Barbell Bench Press", best_weight: 80, best_reps: 10}]
-    API-->>App: Previous bests
-
-    App->>U: Show active workout screen with exercises, YouTube links, previous bests
-    Note over U,App: Voice logging flow begins (see Diagram 3)
+    Note over U,App: Voice/manual logging flow (see Diagram 3)
 
     U->>App: Tap "Complete Workout"
-    App->>API: PATCH /sessions/s1 {status: "completed", completed_at: now()}
-    API->>DB: UPDATE workout_sessions SET status = 'completed', completed_at = now()
-    DB-->>API: OK
-    API-->>App: 200
-    App->>U: Show completion summary + "Great session!" message
-```
-
-### 6. Profile Setup
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant App as React Native App
-    participant Store as profileStore (Zustand)
-    participant API as FastAPI Backend
-    participant DB as Azure PostgreSQL
-
-    U->>App: Tap Profile tab
-    App->>Store: getProfile()
-    Store->>API: GET /api/profile
-    API->>DB: SELECT * FROM profiles WHERE user_id = @userId
-    DB-->>API: Profile row (empty fields)
-    API-->>Store: { training_goals: null, experience_level: null }
-    Store-->>App: Render empty profile form
-
-    U->>App: Select goal: "Hypertrophy"
-    U->>App: Select experience: "Intermediate"
-    U->>App: Toggle days: Mon, Wed, Fri, Sat
-    U->>App: Tap "Save Profile"
-
-    App->>Store: updateProfile(data)
-    Store->>API: PUT /api/profile { training_goals, experience_level, available_days }
-    API->>DB: UPDATE profiles SET ... WHERE user_id = @userId
-    DB-->>API: 1 row updated
-    API-->>Store: 200 OK
-    Store-->>App: Profile saved ✓
-    App->>App: Navigate to Chat tab (if first setup)
-```
-
-### 7. Browse Schedule
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant App as React Native App
-    participant Store as workoutStore (Zustand)
-    participant API as FastAPI Backend
-    participant DB as Azure PostgreSQL
-    participant WV as WebView (YouTube)
-
-    U->>App: Tap Schedule tab
-    App->>Store: fetchWeekSessions(weekStart)
-    Store->>API: GET /api/sessions?week_start=2026-02-23
-    API->>DB: SELECT * FROM workout_sessions WHERE scheduled_date BETWEEN @start AND @end
-    DB-->>API: Array of sessions with exercises + YouTube URLs
-    API-->>Store: Sessions array
-    Store-->>App: Render workout cards
-
-    App->>App: Mon — Push Day (4 exercises)
-    App->>App: Wed — Pull Day (5 exercises)
-    App->>App: Fri — Legs (4 exercises)
-    App->>App: Sat — Upper (5 exercises)
-
-    U->>App: Tap "Push Day" card
-    App->>App: Expand → show exercises with sets × reps
-
-    U->>App: Tap YouTube link on "Bench Press"
-    App->>WV: Open YouTube URL in WebView
-    WV-->>U: Video plays (exercise demo)
-
-    U->>App: Swipe left → next week
-    App->>Store: fetchWeekSessions(nextWeekStart)
-    Store->>API: GET /api/sessions?week_start=2026-03-02
-    API-->>Store: Sessions (may be empty → "No plan yet")
-```
-
-### 8. Manual Set Edit
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant App as Active Workout Screen
-    participant Store as workoutStore (Zustand)
-    participant API as FastAPI Backend
-    participant DB as Azure PostgreSQL
-
-    Note over App: Displayed: Set 1: 80kg × 8 ✓ | Set 2: 85kg × 3 ← wrong
-
-    U->>App: Tap on "Set 2: 85kg × 3"
-    App->>App: Open edit dialog (pre-filled: weight=85, reps=3)
-    U->>App: Change reps 3 → 6, add RPE: 8
-    U->>App: Tap "Save"
-
-    App->>Store: updateSet(logId, { reps: 6, rpe: 8 })
-    Store->>API: PATCH /api/exercises/logs/{logId}
-    API->>DB: UPDATE exercise_logs SET reps=6, rpe=8 WHERE id=@logId
-    DB-->>API: 1 row updated
-    API-->>Store: 200 OK
-    Store-->>App: Set 2: 85kg × 6 (RPE 8) ✓
-
-    U->>App: Long-press a set → "Delete set?"
-    U->>App: Confirm delete
-    Store->>API: DELETE /api/exercises/logs/{logId}
-    API->>DB: DELETE FROM exercise_logs WHERE id=@logId
-    DB-->>API: 200 OK
-    Store-->>App: Set removed
-```
-
-### 9. Ad-hoc Chat (Ask AI for Advice)
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant App as Chat Screen
-    participant SSE as SSE Stream
-    participant Agent as Agent Framework (Sonnet)
-    participant MCP as MCP Tools
-    participant DB as Azure PostgreSQL
-
-    U->>App: "My shoulder hurts. Can you modify Wednesday's push day?"
-    App->>SSE: POST /chat/stream
-    SSE->>Agent: agent.run_stream(message)
-
-    Agent-->>SSE: TextReasoningContent: "Need to check Wednesday's plan..."
-    SSE-->>App: { type: "thinking" }
-
-    Agent->>MCP: get_exercise_history(user_id, "Bench Press")
-    MCP->>DB: SELECT recent logs
-    DB-->>MCP: History data
-    MCP-->>Agent: Previous sets
-
-    SSE-->>App: { type: "tool_start" } → "📊 Checking history..."
-    SSE-->>App: { type: "tool_done" } → "✓ History loaded"
-
-    Agent-->>SSE: TextContent (streamed): "Let's protect that shoulder. Here's a modified push day replacing barbell pressing with chest flyes and landmine press..."
-    SSE-->>App: { type: "text" } (token by token)
-
-    Agent-->>SSE: "Want me to update Wednesday's session with these changes?"
-    SSE-->>App: { type: "done" }
-
-    Note over U,App: Advisory only — does NOT save unless user confirms
-```
-
-### 10. Re-plan / Adjust Schedule
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant App as Chat Screen
-    participant SSE as SSE Stream
-    participant Agent as Agent Framework (Sonnet)
-    participant MCP as MCP Tools
-    participant DB as Azure PostgreSQL
-
-    U->>App: "Can't train Thursday. Move it to Saturday."
-    App->>SSE: POST /chat/stream
-    SSE->>Agent: agent.run_stream(message)
-
-    Agent-->>SSE: TextReasoningContent: "Check schedule, move Thursday → Saturday"
-    SSE-->>App: { type: "thinking" }
-
-    Agent->>MCP: get_user_profile(user_id)
-    MCP-->>Agent: Profile data
-    SSE-->>App: { type: "tool_start" } → "📋 Checking profile..."
-
-    Agent->>MCP: get_exercise_history(user_id, "*", limit=20)
-    MCP-->>Agent: This week's sessions
-    SSE-->>App: { type: "tool_start" } → "📊 Reviewing schedule..."
-
-    Agent->>MCP: save_workout_plan(user_id, week_start, updated_plan)
-    MCP->>DB: BEGIN TRANSACTION
-    MCP->>DB: UPDATE workout_sessions SET status='cancelled' WHERE date=Thu
-    MCP->>DB: INSERT workout_sessions (Saturday session)
-    MCP->>DB: COMMIT
-    DB-->>MCP: Success
-    MCP-->>Agent: Plan saved
-
-    SSE-->>App: { type: "tool_start" } → "💾 Updating schedule..."
-    SSE-->>App: { type: "tool_done" } → "✓ Schedule updated"
-
-    Agent-->>SSE: TextContent: "Done! Moved Legs from Thursday to Saturday. Your week: Mon—Push | Wed—Pull | Sat—Legs"
-    SSE-->>App: { type: "text" } + PlanCard renders
-    SSE-->>App: { type: "done" }
-
-    Note over App: Schedule tab refreshes on next focus
+    App->>API: PATCH /sessions/{id} {status: "completed"}
+    App->>U: Completion summary
 ```
 
 ---
 
 ## User Journeys
 
-| # | Journey | Key Screens | Sequence Diagram | Depends On |
-|---|---------|-------------|-----------------|------------|
-| 1 | **First Launch & Sign In** | Login → Chat | `01-auth-flow` | — |
-| 2 | **Profile Setup** | Profile tab | `07-profile-setup` | J1 |
-| 3 | **Workout Planning (Chat)** | Chat tab | `02-chat-streaming` | J1, J2 |
-| 4 | **Browse Schedule** | Schedule tab | `08-browse-schedule` | J3 |
-| 5 | **Start a Workout** | Active workout screen | `05-workout-session` | J4 |
-| 6 | **Voice Log Sets** | Active workout + mic | `03-voice-logging` | J5 |
-| 7 | **Manual Set Edit** | Active workout + dialog | `09-manual-set-edit` | J5 |
-| 8 | **Complete Workout** | Active workout → summary | `05-workout-session` | J5 |
-| 9 | **Check Progress** | Progress tab | `04-progress-view` | J8 (needs logged data) |
-| 10 | **Ask AI for Advice** | Chat tab | `10-adhoc-chat` | J3 |
-| 11 | **Re-plan / Adjust Schedule** | Chat tab → Schedule | `11-replan-schedule` | J3 |
-| 12 | **Return User Weekly Loop** | Chat → Schedule → Workout → Progress | Composite of above | All |
+| # | Journey | Status |
+|---|---------|--------|
+| 1 | **First Launch & Sign In** — Register/login with email+password | Done |
+| 2 | **Profile Setup** — Set goals, experience, available days | Done |
+| 3 | **Workout Planning (Chat)** — Chat with AI to plan a week | Done |
+| 4 | **Browse Schedule** — View workout cards, YouTube links, week navigation | Done |
+| 5 | **Start a Workout** — Begin session from schedule | Done |
+| 6 | **Voice Log Sets** — Mic toggle, Deepgram STT, Haiku parsing, confirmation | Done |
+| 7 | **Manual Set Edit** — Tap set to edit/delete, manual add dialog | Done |
+| 8 | **Complete Workout** — Mark session done, navigate back | Done |
+| 9 | **Check Progress** — Exercise picker, weight-over-time chart | Not started |
+| 10 | **Ask AI for Advice** — Ad-hoc chat questions (works via existing chat) | Done |
+| 11 | **Re-plan / Adjust Schedule** — "Move Thursday to Saturday" via chat | Done |
+| 12 | **Return User Weekly Loop** — Full plan→train→log→progress→re-plan | Partial (needs J9) |
+
+### Journey Dependency Graph
+
+```
+J1 (Sign In)
+ └─→ J2 (Profile Setup)
+      └─→ J3 (Workout Planning Chat)
+           ├─→ J4 (Browse Schedule)
+           │    └─→ J5 (Start Workout)
+           │         ├─→ J6 (Voice Log Sets)
+           │         ├─→ J7 (Manual Edit)
+           │         └─→ J8 (Complete Workout)
+           │              └─→ J9 (Progress) ← NOT YET BUILT
+           ├─→ J10 (Ad-hoc Chat)
+           └─→ J11 (Re-plan Schedule)
+```
 
 ---
 
-## Azure Infrastructure (Terraform)
+## MCP Tools (9 total)
 
-### Resource Map
-
-```
-gym-trainer-rg (Resource Group)
-├── gym-trainer-acr (Azure Container Registry)
-├── gym-trainer-aca-env (Container Apps Environment)
-│   └── gym-trainer-api (Container App — FastAPI + MCP server)
-├── gym-trainer-pg (Azure PostgreSQL Flexible Server)
-│   └── gym-trainer-db (PostgreSQL Database)
-├── gym-trainer-kv (Key Vault — API keys, connection strings, JWT secret)
-└── gym-trainer-log (Log Analytics Workspace)
-```
-
-### Terraform Module Structure
-
-```
-infra/
-├── main.tf                    # Provider config, resource group
-├── variables.tf               # Input variables
-├── outputs.tf                 # Connection strings, endpoints
-├── terraform.tfvars           # Personal config values
-├── modules/
-│   ├── postgresql/
-│   │   ├── main.tf            # Azure PostgreSQL Flexible Server + Database
-│   │   ├── variables.tf
-│   │   └── outputs.tf
-│   ├── container-apps/
-│   │   ├── main.tf            # ACR + ACA Environment + Container App
-│   │   ├── variables.tf
-│   │   └── outputs.tf
-│   ├── auth/                  # COMMENTED OUT — not needed for email/password MVP
-│   │   ├── main.tf            # (Was: AD B2C tenant + Google IdP — now unused)
-│   │   ├── variables.tf
-│   │   └── outputs.tf
-│   └── keyvault/
-│       ├── main.tf            # Key Vault + secrets
-│       ├── variables.tf
-│       └── outputs.tf
-└── scripts/
-    ├── seed.sql               # Initial schema migration
-    └── deploy.sh              # Build + push container + deploy
-```
-
-### Key Terraform Resources
-
-```hcl
-# Container App (API + MCP server)
-resource "azurerm_container_app" "api" {
-  name                         = "gym-trainer-api"
-  container_app_environment_id = azurerm_container_app_environment.env.id
-  resource_group_name          = azurerm_resource_group.rg.name
-
-  template {
-    container {
-      name   = "api"
-      image  = "${azurerm_container_registry.acr.login_server}/gym-trainer-api:latest"
-      cpu    = 0.5
-      memory = "1Gi"
-
-      env {
-        name        = "ANTHROPIC_API_KEY"
-        secret_name = "anthropic-api-key"
-      }
-      env {
-        name        = "DATABASE_URL"
-        secret_name = "database-url"
-      }
-      env {
-        name        = "YOUTUBE_API_KEY"
-        secret_name = "youtube-api-key"
-      }
-      env {
-        name        = "DEEPGRAM_API_KEY"
-        secret_name = "deepgram-api-key"
-      }
-    }
-    min_replicas = 0   # Scale to zero when idle (personal project)
-    max_replicas = 1
-  }
-
-  ingress {
-    external_enabled = true
-    target_port      = 8000
-    transport        = "http"
-  }
-}
-
-# Azure PostgreSQL (Burstable B1ms — good for personal use)
-resource "azurerm_postgresql_flexible_server" "pg" {
-  name                   = "gym-trainer-pg"
-  resource_group_name    = azurerm_resource_group.rg.name
-  location               = azurerm_resource_group.rg.location
-  administrator_login    = var.pg_admin_username
-  administrator_password = var.pg_admin_password
-  sku_name               = "B_Standard_B1ms"  # ~£10/month
-  storage_mb             = 32768
-  version                = "16"
-}
-
-resource "azurerm_postgresql_flexible_server_database" "db" {
-  name      = "gym-trainer-db"
-  server_id = azurerm_postgresql_flexible_server.pg.id
-  collation = "en_US.utf8"
-  charset   = "UTF8"
-}
-```
-
-### Estimated Monthly Cost (Personal Use)
-
-| Resource | SKU | ~Cost/month |
+| Tool | Parameters | Purpose |
 |---|---|---|
-| Azure PostgreSQL | Burstable B1ms | £10 |
-| Container Apps | Consumption (scale to 0) | £0-5 |
-| Container Registry | Basic | £3.50 |
-| Key Vault | Standard | £0.02 |
-| Log Analytics | Free tier (5GB) | £0 |
-| **Total** | | **~£14-19/month** |
+| `get_user_profile` | `user_id` | Load goals, experience, days, preferred unit, training objective |
+| `update_training_objective` | `user_id, objective` | Set/clear a specific measurable goal |
+| `get_exercise_history` | `user_id, exercise_name, limit` | Recent logged sets for progressive overload |
+| `get_planned_workouts` | `user_id, start_date, end_date` | Query existing sessions by date range |
+| `search_youtube` | `query` | Exercise demo video URL (YouTube Data API or search fallback) |
+| `save_workout_plan` | `user_id, week_start, sessions` | Persist full weekly plan (upsert) |
+| `add_session_to_week` | `user_id, week_start, day, title, exercises` | Add/replace a single session |
+| `update_session` | `user_id, session_id, updates` | Modify session title/exercises/date |
+| `delete_session` | `user_id, session_id` | Remove a session and its logs |
+| `search_exercises` | `query, limit` | Search canonical exercise database (trigram similarity) |
 
 ---
 
-## Microsoft Agent Framework — Agent Design
-
-### Agent Setup (Python)
-
-```python
-from agent_framework.anthropic import AnthropicClient
-
-# Planning agent (Sonnet)
-planning_client = AnthropicClient(model_id="claude-sonnet-4-5-20250929")
-
-gym_agent = planning_client.as_agent(
-    name="GymTrainer",
-    instructions=GYM_TRAINER_SYSTEM_PROMPT,
-    tools=[
-        planning_client.get_mcp_tool(
-            name="gym-tools",
-            url="http://localhost:8080/mcp",  # Co-hosted MCP server
-        ),
-    ],
-    max_tokens=4096,
-)
-
-# Voice parser (Haiku) — separate lightweight agent, no MCP tools needed
-voice_client = AnthropicClient(model_id="claude-haiku-4-5-20251001")
-
-voice_parser = voice_client.as_agent(
-    name="VoiceParser",
-    instructions=VOICE_PARSE_SYSTEM_PROMPT,
-    max_tokens=256,
-)
-```
-
-### System Prompts
-
-**GymTrainer (Sonnet):**
-```
-You are a personal gym trainer AI. You plan balanced weekly workouts based on the
-user's goals, experience level, and available training days.
-
-Behaviour:
-- Always check the user's profile before planning
-- Review exercise history to suggest progressive overload
-- Find YouTube demos for each exercise using search_youtube
-- Design balanced splits (push/pull/legs, upper/lower, etc.) based on available days
-- Use canonical exercise names consistently (e.g., "Barbell Bench Press" not "bench")
-- Save completed plans using save_workout_plan
-- Be conversational but concise
-
-When planning, ensure:
-- Each muscle group is hit 2x/week minimum
-- Compound movements before isolation
-- Appropriate volume for the user's experience level
-- Rest days between same muscle groups
-```
-
-**VoiceParser (Haiku):**
-```
-You are a gym workout set logger. Parse voice transcripts into structured JSON.
-
-Context provided: current_exercise, previous_sets, last_session_best
-
-Rules:
-- "same weight" / "same as before" → use weight from previous_sets
-- "add X" / "plus X" → add to previous weight
-- "drop set" → multiple sets with decreasing weight
-- "bodyweight" / "BW" → weight_kg: 0
-- "to failure" → rpe: 10
-- Default unit is kg unless user says lbs (convert: lbs × 0.4536)
-- If reps not mentioned, return { "needs_clarification": "How many reps?" }
-
-Respond ONLY with valid JSON:
-{ "sets": [{ "weight_kg": number, "reps": number, "rpe": number|null }] }
-or
-{ "needs_clarification": "question" }
-```
-
----
-
-## MCP Tool Server
-
-Implemented as a FastMCP Python server, co-hosted with the FastAPI backend.
-
-```python
-from fastmcp import FastMCP
-
-mcp = FastMCP("gym-tools")
-
-@mcp.tool()
-async def get_user_profile(user_id: str) -> dict:
-    """Get the user's training profile including goals, experience, and preferences."""
-    ...
-
-@mcp.tool()
-async def get_exercise_history(user_id: str, exercise_name: str, limit: int = 10) -> list:
-    """Get recent logged sets for a specific exercise. Returns weight, reps, RPE, and date."""
-    ...
-
-@mcp.tool()
-async def search_youtube(query: str) -> dict:
-    """Search YouTube for exercise demonstration videos. Returns video URL and title."""
-    ...
-
-@mcp.tool()
-async def save_workout_plan(user_id: str, week_start: str, plan: dict) -> dict:
-    """Save a structured weekly workout plan and create workout sessions."""
-    ...
-
-@mcp.tool()
-async def search_exercises(query: str, limit: int = 10) -> dict:
-    """Search canonical exercise database by name (trigram similarity)."""
-    ...
-
-# Run MCP server alongside FastAPI
-# FastAPI on :8000, MCP on :8080
-```
-
----
-
-## Streaming Architecture (SSE)
-
-### Backend SSE Endpoint
-
-```python
-from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
-import json
-
-app = FastAPI()
-
-@app.post("/chat/stream")
-async def chat_stream(request: ChatRequest):
-    async def event_generator():
-        async for event in gym_agent.run_stream(request.message):
-            if isinstance(event, TextReasoningContent):
-                yield f"data: {json.dumps({'type': 'thinking', 'text': event.text})}\n\n"
-            elif isinstance(event, ToolCallContent):
-                yield f"data: {json.dumps({'type': 'tool_start', 'name': event.name})}\n\n"
-            elif isinstance(event, ToolResultContent):
-                yield f"data: {json.dumps({'type': 'tool_done', 'name': event.name})}\n\n"
-            elif isinstance(event, TextContent):
-                yield f"data: {json.dumps({'type': 'text', 'text': event.text})}\n\n"
-        yield f"data: {json.dumps({'type': 'done'})}\n\n"
-
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
-```
-
-### React Native SSE Consumer
-
-```typescript
-const streamChat = async (message: string) => {
-  const response = await fetch(`${API_URL}/chat/stream`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ message, user_id }),
-  });
-
-  const reader = response.body?.getReader();
-  const decoder = new TextDecoder();
-
-  while (true) {
-    const { done, value } = await reader!.read();
-    if (done) break;
-
-    const chunk = decoder.decode(value);
-    const lines = chunk.split('\n').filter(l => l.startsWith('data: '));
-
-    for (const line of lines) {
-      const event = JSON.parse(line.slice(6));
-
-      switch (event.type) {
-        case 'thinking':
-          updateThinkingBlock(event.text);
-          break;
-        case 'tool_start':
-          addToolIndicator(event.name, 'loading');
-          break;
-        case 'tool_done':
-          updateToolIndicator(event.name, 'complete');
-          break;
-        case 'text':
-          appendMessageText(event.text);
-          break;
-        case 'done':
-          finalizeMessage();
-          break;
-      }
-    }
-  }
-};
-```
-
----
-
-## Database Schema (Azure PostgreSQL)
+## Database Schema
 
 ```sql
 -- User profile & training preferences
@@ -818,11 +263,12 @@ CREATE TABLE profiles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     display_name VARCHAR(100),
     email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,  -- bcrypt hashed password
-    training_goals JSONB,              -- ["hypertrophy", "strength"]
-    experience_level VARCHAR(20),      -- beginner, intermediate, advanced
+    password_hash VARCHAR(255) NOT NULL,
+    training_goals JSONB,
+    experience_level VARCHAR(20),
     available_days INT,
-    preferred_unit VARCHAR(5) DEFAULT 'kg',  -- kg or lbs
+    preferred_unit VARCHAR(5) DEFAULT 'kg',
+    training_objective TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -832,7 +278,7 @@ CREATE TABLE workout_plans (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES profiles(id),
     week_start DATE NOT NULL,
-    plan_json JSONB NOT NULL,          -- Full structured plan from Claude
+    plan_json JSONB NOT NULL,
     notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -844,14 +290,14 @@ CREATE TABLE workout_sessions (
     plan_id UUID REFERENCES workout_plans(id),
     scheduled_date DATE NOT NULL,
     title VARCHAR(100) NOT NULL,
-    status VARCHAR(20) DEFAULT 'scheduled',  -- scheduled, in_progress, completed, skipped
-    exercises JSONB NOT NULL,                 -- exercises with YouTube URLs
+    status VARCHAR(20) DEFAULT 'scheduled',
+    exercises JSONB NOT NULL,
     started_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Individual sets logged during workout (progressive overload data)
+-- Individual sets logged during workout
 CREATE TABLE exercise_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES profiles(id),
@@ -865,854 +311,99 @@ CREATE TABLE exercise_logs (
     logged_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Chat history with the AI agent
+-- Chat history
 CREATE TABLE chat_messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES profiles(id),
-    role VARCHAR(20) NOT NULL,  -- 'user' or 'assistant'
+    role VARCHAR(20) NOT NULL,
     content TEXT NOT NULL,
-    tool_calls JSONB,           -- if Claude used tools
+    tool_calls JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Canonical exercise reference table with fuzzy name resolution
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-
+-- Canonical exercise reference (62 seeded, auto-grows)
 CREATE TABLE exercises (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(100) UNIQUE NOT NULL,
     aliases TEXT[] DEFAULT '{}',
-    muscle_group VARCHAR(50),          -- chest, back, shoulders, legs, arms, core, full_body
-    category VARCHAR(30),              -- compound, isolation, bodyweight, cardio
+    muscle_group VARCHAR(50),
+    category VARCHAR(30),
     equipment VARCHAR(50),
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Indexes for performance
+-- Key indexes
 CREATE INDEX idx_exercises_name_trgm ON exercises USING gin (name gin_trgm_ops);
 CREATE INDEX idx_exercise_logs_lookup ON exercise_logs(user_id, exercise_name, logged_at);
 CREATE INDEX idx_sessions_schedule ON workout_sessions(user_id, scheduled_date);
 CREATE INDEX idx_chat_history ON chat_messages(user_id, created_at);
 ```
 
-**Exercise Name Resolution:** All exercise names pass through a 3-tier resolver on write (exact match → alias match → trigram similarity ≥ 0.4). If no match is found, the name is auto-inserted as a new canonical exercise. This ensures `exercise_logs` and `workout_sessions.exercises` always use consistent names, enabling reliable progressive overload tracking. See `backend/app/exercise_resolver.py`.
+**Exercise Name Resolution:** All exercise names pass through a 3-tier resolver on write (exact match → alias match → trigram similarity ≥ 0.4). Unknown exercises are auto-inserted as new canonical entries. See `backend/app/exercise_resolver.py`.
 
 ---
 
-## Project Structure
+## Azure Infrastructure
 
 ```
-gym-trainer/
-├── CLAUDE.md                       # Agent team instructions
-├── infra/                          # Terraform (Agent: infra-agent)
-│   ├── main.tf
-│   ├── variables.tf
-│   ├── outputs.tf
-│   ├── terraform.tfvars
-│   ├── modules/
-│   │   ├── sql/
-│   │   ├── container-apps/
-│   │   ├── auth/
-│   │   └── keyvault/
-│   └── scripts/
-│       ├── seed.sql
-│       └── deploy.sh
-├── backend/                        # Python FastAPI (Agent: backend-agent)
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   ├── app/
-│   │   ├── main.py                 # FastAPI app + SSE endpoints
-│   │   ├── config.py               # Settings from env vars
-│   │   ├── auth.py                 # JWT auth (bcrypt + HS256 token issue/validate)
-│   │   ├── agent/
-│   │   │   ├── gym_trainer.py      # Agent Framework setup + system prompt
-│   │   │   ├── voice_parser.py     # Haiku voice parsing agent
-│   │   │   └── prompts.py          # System prompts
-│   │   ├── exercise_resolver.py    # 3-tier name resolution (exact → alias → trigram)
-│   │   ├── seed_exercises.py       # ~62 canonical exercises seeded on startup
-│   │   ├── mcp/
-│   │   │   ├── server.py           # FastMCP tool server
-│   │   │   ├── tools/
-│   │   │   │   ├── youtube.py      # search_youtube tool
-│   │   │   │   ├── exercises.py    # get_exercise_history tool
-│   │   │   │   ├── plans.py        # save_workout_plan tool
-│   │   │   │   └── profile.py      # get_user_profile tool
-│   │   │   └── __init__.py
-│   │   ├── routes/
-│   │   │   ├── chat.py             # POST /chat/stream (SSE)
-│   │   │   ├── voice.py            # POST /voice/parse
-│   │   │   ├── sessions.py         # CRUD workout sessions
-│   │   │   ├── exercises.py        # Exercise history + progress
-│   │   │   └── profile.py          # User profile CRUD
-│   │   └── db.py                   # PostgreSQL connection (asyncpg)
-│   └── tests/
-│       ├── test_mcp_tools.py
-│       ├── test_voice_parser.py
-│       └── test_routes.py
-├── mobile/                         # React Native Expo (Agents: frontend-agent, workout-agent)
-│   ├── app/
-│   │   ├── _layout.tsx             # Root layout (tab navigator)
-│   │   ├── (tabs)/
-│   │   │   ├── index.tsx           # Chat screen (home)
-│   │   │   ├── schedule.tsx        # Schedule screen
-│   │   │   ├── workout/
-│   │   │   │   ├── index.tsx       # Workout list
-│   │   │   │   └── [sessionId].tsx # Active workout
-│   │   │   ├── progress.tsx        # Progress charts
-│   │   │   └── profile.tsx         # Settings
-│   │   └── auth/
-│   │       └── login.tsx           # Email/password login + registration
-│   ├── components/
-│   │   ├── chat/
-│   │   │   ├── MessageBubble.tsx
-│   │   │   ├── ThinkingBlock.tsx   # Collapsible reasoning display
-│   │   │   ├── ToolIndicator.tsx   # "🔍 Searching..." → "✓ Found"
-│   │   │   ├── StreamingText.tsx   # Token-by-token text render
-│   │   │   ├── ChatInput.tsx
-│   │   │   └── PlanCard.tsx        # Rendered workout plan from AI
-│   │   ├── workout/
-│   │   │   ├── ExerciseCard.tsx
-│   │   │   ├── SetLogger.tsx
-│   │   │   ├── VoiceButton.tsx
-│   │   │   └── RestTimer.tsx
-│   │   └── progress/
-│   │       ├── WeightChart.tsx
-│   │       └── HistoryTable.tsx
-│   ├── services/
-│   │   ├── api.ts                  # Base API client + auth headers
-│   │   ├── sse.ts                  # SSE stream consumer
-│   │   ├── voice.ts                # STT abstraction (native + Deepgram)
-│   │   └── auth.ts                 # Email/password auth (register, login, token storage)
-│   ├── theme.ts                    # React Native Paper MD3 theme config
-│   ├── stores/
-│   │   ├── authStore.ts
-│   │   ├── chatStore.ts
-│   │   ├── workoutStore.ts
-│   │   └── profileStore.ts
-│   ├── types/
-│   │   └── index.ts
-│   ├── app.json
-│   ├── eas.json                    # EAS Build profiles (dev/preview/production)
-│   ├── package.json
-│   └── tsconfig.json
-├── .github/
-│   └── workflows/
-│       └── ci.yml                  # Lint + test + preview build on main
-└── docs/
-    └── architecture.md             # This document
+gym-trainer-rg (Resource Group — uksouth)
+├── gymtraineracr (Container Registry, Basic)
+├── gym-trainer-aca-env (Container Apps Environment + Log Analytics)
+│   └── gym-trainer-api (Container App — FastAPI :8000 + MCP :8080)
+├── gym-trainer-pg (PostgreSQL Flexible Server, B1ms, v16)
+│   └── gym-trainer-db (Database)
+└── Key Vault (not deployed — secrets via Container App env vars)
 ```
-
----
-
-## Claude Code Agent Team — Implementation Strategy
-
-### Approach
-
-Using Claude Code Agent Teams to parallelise implementation across 4 specialist agents. Each agent owns a distinct set of files with zero overlap, coordinated by a lead agent in delegate mode.
-
-Key principles:
-- **Strict file ownership** — no two agents edit the same file
-- **Rich spawn prompts** — each agent gets full context about the project, conventions, and their specific scope
-- **Delegate mode** — lead only coordinates, never implements
-- **Journey-based execution** — after Foundation, each phase delivers complete end-to-end user journeys (backend + frontend + stores). No disconnected features.
-- **Gates between phases** — each phase has an acceptance test: "can the user do X end-to-end?"
-
-### Team Structure
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    LEAD (You + Claude Code)                   │
-│                    Mode: Delegate                            │
-│                    Role: Coordinate, review, unblock         │
-├──────────┬──────────┬──────────────────┬────────────────────┤
-│          │          │                  │                    │
-│  infra   │ backend  │  frontend-chat   │  frontend-workout  │
-│  agent   │  agent   │    agent         │     agent          │
-│          │          │                  │                    │
-│ Owns:    │ Owns:    │ Owns:            │ Owns:              │
-│ infra/*  │ backend/*│ mobile/app/      │ mobile/app/        │
-│          │          │  (tabs)/index    │  (tabs)/schedule   │
-│          │          │ mobile/          │  (tabs)/workout/*  │
-│          │          │  components/     │  (tabs)/progress   │
-│          │          │  chat/*          │  (tabs)/profile    │
-│          │          │ mobile/          │ mobile/             │
-│          │          │  services/       │  components/       │
-│          │          │  sse.ts          │  workout/*         │
-│          │          │  api.ts          │  progress/*        │
-│          │          │ mobile/stores/   │ mobile/services/   │
-│          │          │  chatStore.ts    │  voice.ts          │
-│          │          │ mobile/          │ mobile/stores/     │
-│          │          │  theme.ts        │  workoutStore.ts   │
-└──────────┴──────────┴──────────────────┴────────────────────┘
-```
-
-### Execution Plan — Journey-Based (16 Working Hours)
-
-Implementation is structured as **Foundation + 5 Journey Phases**. Foundation builds all scaffolding and infrastructure. Each subsequent phase delivers 1-3 complete user journeys end-to-end, across all layers (backend routes, MCP tools, agent integration, frontend screens, stores). Agents still work in parallel within each phase, but the work is organised around delivering working user flows rather than disconnected features.
-
-#### Foundation (Hours 0-4) — All 4 agents in parallel ✅ COMPLETED
-
-**Goal:** Deployable infrastructure, running app with navigation, auth plumbed, DB schema live.
-
-| Agent | Tasks | Files | Status |
-|---|---|---|---|
-| **infra-agent** | T1: Terraform modules (PostgreSQL, ACA, ACR, KV) | `infra/**` | ✅ |
-| | T2: seed.sql schema migration | `infra/scripts/seed.sql` | ✅ |
-| | T3: Dockerfile + deploy script | `backend/Dockerfile`, `infra/scripts/deploy.sh` | ✅ |
-| | T4: GitHub Actions CI + EAS config | `.github/workflows/`, `mobile/eas.json` | ✅ |
-| **backend-agent** | T1: FastAPI scaffold + config + DB connection | `backend/app/main.py`, `config.py`, `db.py` | ✅ |
-| | T2: Auth middleware (JWT issue + validation, bcrypt password hashing) | `backend/app/auth.py` | ✅ |
-| | T3: Profile REST routes (GET/PUT) | `backend/app/routes/profile.py` | ✅ |
-| **frontend-chat-agent** | T1: Expo project init + navigation scaffold | `mobile/app/_layout.tsx`, `package.json` | ✅ |
-| | T2: Paper theme config (colours, fonts, dark mode) | `mobile/theme.ts` | ✅ |
-| | T3: API service (base client + auth headers) | `mobile/services/api.ts` | ✅ |
-| | T4: Auth service (email/password register + login) | `mobile/services/auth.ts` | ✅ |
-| **frontend-workout-agent** | T1: Type definitions (all shared types) | `mobile/types/index.ts` | ✅ |
-| | T2: Workout store skeleton | `mobile/stores/workoutStore.ts` | ✅ |
-| | T3: Profile store skeleton | `mobile/stores/profileStore.ts` | ✅ |
-
-**Gate:** Backend serves `/health`, Terraform plans clean, Expo app launches with tab navigation, API service can make authenticated requests.
-
-**Decision log:** Switched from Azure SQL to Azure PostgreSQL Flexible Server (JSONB, asyncpg, better Python DX). Updated all schema, Terraform modules, and backend to use PostgreSQL.
-
----
-
-#### Phase 1: Onboarding — Journeys 1 & 2 (Hours 4-6) ✅ COMPLETED
-
-**Delivers:** User can register/login with email and password and set up their training profile.
-
-| Agent | Tasks | Journey | Files | Status |
-|---|---|---|---|---|
-| **infra-agent** | T5: Terraform validate + fix issues | — | `infra/**` | ✅ |
-| | T6: Integration test script (test-api.sh) | — | `infra/scripts/test-api.sh` | ✅ |
-| **backend-agent** | T4: Profile route tests (7 tests, all passing) | J2 | `backend/tests/` | ✅ |
-| **frontend-chat-agent** | T5: Login screen (email/password form) | J1 | `mobile/app/auth/login.tsx` | ✅ |
-| | T6: Auth store (tokens, user state, SecureStore) | J1 | `mobile/stores/authStore.ts` | ✅ |
-| | T7: Auth-gated layout (redirect to login if no token) | J1 | `mobile/app/_layout.tsx` | ✅ |
-| **frontend-workout-agent** | T4: Profile screen (form + save) | J2 | `mobile/app/(tabs)/profile.tsx` | ✅ |
-| | T5: Profile store (GET/PUT integration) | J2 | `mobile/stores/profileStore.ts` | ✅ |
-
-**Gate:** Can register or login with email/password → lands on chat → navigate to Profile → fill in goals/experience/days → save → data persists in Azure PostgreSQL. Infra deployed and reachable.
-
-**Notes:** Terraform validated and fixed (auth module commented out — not needed for email/password MVP). Type mismatch between api.ts UserProfile and types/index.ts Profile flagged — to be aligned in Phase 2.
-
----
-
-#### Phase 1.5: Azure Deployment & Mobile Build (Post-Phase 1) — ✅ COMPLETED
-
-**Goal:** Deploy backend to Azure, build standalone APK via EAS, test end-to-end on real phone.
-
-**Status as of 2026-02-23:**
-
-##### Azure Infrastructure — ✅ DEPLOYED & WORKING
-
-All infrastructure provisioned via Terraform and verified:
-
-| Resource | Status | Details |
-|---|---|---|
-| Resource Group (`gym-trainer-rg`) | ✅ Live | uksouth |
-| PostgreSQL Flexible Server (`gym-trainer-pg`) | ✅ Live | B1ms, PostgreSQL 16, 32GB |
-| PostgreSQL Database (`gym-trainer-db`) | ✅ Live | Schema auto-created by backend on startup |
-| Container Registry (`gymtraineracr`) | ✅ Live | Basic SKU |
-| Container App Environment | ✅ Live | Log Analytics integrated |
-| Container App (`gym-trainer-api`) | ✅ Live | 0.25 CPU, 0.5Gi RAM |
-| CIAM Tenant | ❌ Deleted | Was created then deleted — not needed for email/password auth |
-| Key Vault | ⏸ Not deployed | Module commented out — secrets passed as Container App env vars for now |
 
 **API URL:** `https://gym-trainer-api.bluehill-f327b734.uksouth.azurecontainerapps.io`
-- `GET /health` → `{"status":"ok"}` ✅
-- `POST /auth/login` → Returns JWT ✅ (tested with seeded user shotend@gmail.com)
 
-##### Backend Deployment — ✅ WORKING
-
-- Docker image built with `--platform linux/amd64` (required for Azure — Apple Silicon builds ARM by default)
-- Image pushed to ACR: `gymtraineracr.azurecr.io/gym-trainer-api:latest`
-- Auto-migration: `backend/app/main.py` lifespan creates all tables via `CREATE TABLE IF NOT EXISTS` on startup (workaround for inability to connect to Azure PG from local machine — port 5432 blocked by ISP)
-- Dev user seeded automatically: `shotend@gmail.com` / `Sosho144@`
-
-##### Terraform Fixes Applied
-
-1. **PostgreSQL zone drift**: Azure auto-assigned zone "3", Terraform tried to remove it → Added `lifecycle { ignore_changes = [zone] }` to postgresql module
-2. **Database URL encoding**: Password `GymTr@1n3r-Pr0d-2026!` contains `@` which broke asyncpg URL parsing → Used `urlencode()` in Terraform output
-3. **Container App image not found**: Image wasn't pushed to ACR yet → Logged into ACR, tagged and pushed
-4. **Container App failed provisioning state**: Previous failed apply created broken resource → Deleted via `az containerapp delete`, re-applied
-5. **Docker platform mismatch**: ARM image on Apple Silicon → Rebuilt with `--platform linux/amd64`
-
-##### EAS Build — ✅ SUCCEEDED
-
-Multiple build failures resolved iteratively across SDK 52 and SDK 54:
-
-**SDK 52 builds (Phase 1.5):**
-
-| Build | Error | Fix Applied |
-|---|---|---|
-| #1 | `expo-modules-core:compileReleaseKotlin FAILED` — Compose Compiler requires Kotlin 1.9.25 but using 1.9.24 | Added `expo-build-properties` plugin with `kotlinVersion: "1.9.25"` |
-| #2 | Same Kotlin error | `npx expo install --fix` to update react-native 0.76.5→0.76.9, removed stale android/ folder |
-| #3 | `processReleaseMainManifest FAILED` — AndroidX vs android.support manifest conflict | Added `enableJetifier: true` to expo-build-properties |
-| #4 | Same manifest error persisted | Set `newArchEnabled: false` in app.json |
-| #5 | Same manifest error — `com.android.support:support-compat:28.0.0` conflicting with `androidx.core:core:1.13.1` | **Removed `@react-native-voice/voice`** (sole source of old support libs, not imported anywhere). Also replaced `react-native-vector-icons` → `@expo/vector-icons` (bundled with Expo, no native compilation). |
-| #6 | ✅ **BUILD SUCCEEDED** | All fixes combined resolved the issue. APK ready for download. |
-
-**SDK 54 builds (2026-02-25):**
-
-| Build | Error | Fix Applied |
-|---|---|---|
-| #7 | `npm ci` failed — `react-dom@19.2.4` requires `react@^19.2.4` but project had `react@19.1.0` | Added `react-dom` as explicit dependency, added npm `overrides` to pin react ecosystem to 19.1.0 |
-| #8 | KSP error — `Can't find KSP version for Kotlin 1.9.25` | Bumped `kotlinVersion` to `2.0.21` in app.json expo-build-properties |
-| #9 | `react-native-reanimated:assertNewArchitectureEnabledTask FAILED` | Set `newArchEnabled: true` (required by reanimated 4.x) |
-| #10 | Build succeeded but **app crashed on open** — `react@19.2.4` vs `react-native-renderer@19.1.0` version mismatch | Pinned `react`, `react-dom`, `react-test-renderer` all to 19.1.0 via npm overrides |
-| #11 | ✅ **BUILD SUCCEEDED + APP RUNS** | All SDK 54 fixes combined |
-
-**Key lesson:** Added `mobile/scripts/preflight.sh` (`npm run preflight`) to catch dependency, TypeScript, and native config issues locally in ~30 seconds instead of discovering them after 20 minutes in the EAS build queue.
-
-##### Current app.json (EAS build config)
-
-```json
-{
-  "expo": {
-    "newArchEnabled": true,
-    "plugins": [
-      "expo-router",
-      "expo-secure-store",
-      ["expo-build-properties", {
-        "android": {
-          "kotlinVersion": "2.0.21",
-          "enableJetifier": true
-        }
-      }]
-    ]
-  }
-}
-```
-
-##### Packages Removed (build compatibility)
-
-- `@react-native-voice/voice` — pulled in `com.android.support:*:28.0.0` causing AndroidX manifest merger failures. Not imported anywhere in code. Voice STT will need a replacement package when Phase 3 (voice logging) is implemented.
-- `react-native-vector-icons` — replaced with `@expo/vector-icons` (bundled with Expo, zero native build overhead). Two files updated:
-  - `mobile/app/auth/login.tsx` — `import { MaterialCommunityIcons } from '@expo/vector-icons'`
-  - `mobile/app/(tabs)/_layout.tsx` — same
-
-- `expo-auth-session` — leftover from original OAuth approach, removed
-
-##### Environment Files
-
-**`mobile/.env`:**
-```
-EXPO_PUBLIC_API_URL=https://gym-trainer-api.bluehill-f327b734.uksouth.azurecontainerapps.io
-EXPO_PUBLIC_DEV_EMAIL=shotend@gmail.com
-EXPO_PUBLIC_DEV_PASSWORD=Sosho144@
-```
-
-**`mobile/eas.json` preview profile** bakes in the Azure API URL:
-```json
-"preview": {
-  "distribution": "internal",
-  "android": { "buildType": "apk" },
-  "env": {
-    "EXPO_PUBLIC_API_URL": "https://gym-trainer-api.bluehill-f327b734.uksouth.azurecontainerapps.io"
-  }
-}
-```
-
-**`backend/.env`** contains Azure PG credentials (PG_HOST, PG_USER, PG_PASSWORD, PG_DB) + JWT_SECRET.
-
-##### What the Next Session Needs To Do
-
-1. **Test the APK on phone** — EAS build #6 succeeded, download and install the preview APK
-2. **Test the full auth flow on phone:**
-   - Open app → Login screen
-   - Sign in with `shotend@gmail.com` / `Sosho144@`
-   - Navigate to Profile → fill in training preferences → Save
-   - Verify data persists (sign out and back in)
-3. **Then proceed to Phase 2** (Workout Planning — chat with AI agent)
-
-##### Commands for Redeployment (if backend changes needed)
-
-```bash
-# Rebuild and push Docker image (from project root)
-cd backend
-docker build --platform linux/amd64 -t gymtraineracr.azurecr.io/gym-trainer-api:latest .
-az acr login --name gymtraineracr
-docker push gymtraineracr.azurecr.io/gym-trainer-api:latest
-
-# Restart container app to pick up new image
-az containerapp revision restart --name gym-trainer-api --resource-group gym-trainer-rg --revision $(az containerapp revision list --name gym-trainer-api --resource-group gym-trainer-rg --query '[0].name' -o tsv)
-
-# Or create new revision
-az containerapp update --name gym-trainer-api --resource-group gym-trainer-rg --image gymtraineracr.azurecr.io/gym-trainer-api:latest
-```
-
-```bash
-# EAS build command
-cd mobile
-eas build --profile preview --platform android
-```
+**Estimated cost:** ~£14-19/month (PostgreSQL £10, Container Apps £0-5, ACR £3.50)
 
 ---
 
-#### Phase 2: Workout Planning — Journeys 3 & 4 (Hours 6-10) ✅ COMPLETED
-
-**Delivers:** User can chat with AI trainer to plan a week, see the plan on the schedule screen with YouTube links.
-
-| Agent | Tasks | Journey | Files | Status |
-|---|---|---|---|---|
-| **backend-agent** | T5: MCP tool server (5 tools) | J3 | `backend/app/mcp/server.py` | ✅ |
-| | T6: Agent Framework setup (Sonnet client + system prompt) | J3 | `backend/app/agent/trainer.py`, `prompts.py` | ✅ |
-| | T7: SSE chat endpoint | J3 | `backend/app/routes/chat.py` | ✅ |
-| | T8: Sessions REST routes (GET week, GET by id) | J4 | `backend/app/routes/sessions.py` | ✅ |
-| | T9: Chat history clear endpoint | J3 | `backend/app/routes/chat.py` | ✅ |
-| **frontend-chat-agent** | T8: SSE consumer service | J3 | `mobile/services/sse.ts` | ✅ |
-| | T9: Chat screen + streaming message display | J3 | `mobile/app/(tabs)/index.tsx` | ✅ |
-| | T10: ThinkingBlock + ToolIndicator + StreamingText | J3 | `mobile/components/chat/` | ✅ |
-| | T11: ChatStore (message state, SSE integration) | J3 | `mobile/stores/chatStore.ts` | ✅ |
-| | T12: PlanCard component (rendered workout plan) | J3 | `mobile/components/chat/PlanCard.tsx` | ✅ |
-| | T13: New Chat button + clear history | J3 | `mobile/app/(tabs)/index.tsx`, `stores/chatStore.ts` | ✅ |
-| **frontend-workout-agent** | T6: Schedule screen (week view + workout cards) | J4 | `mobile/app/(tabs)/schedule.tsx` | ✅ |
-| | T7: WorkoutStore — fetch sessions, week navigation | J4 | `mobile/stores/workoutStore.ts` | ✅ |
-| | T8: YouTube link integration on exercise cards | J4 | `mobile/app/(tabs)/schedule.tsx` | ✅ |
-
-**Gate:** ✅ Can type "Plan my week" → agent loads profile via MCP → asks targeted clarifying questions → streams plan with tool indicators → PlanCard renders with "Building your plan..." spinner → approve → plan saved to DB → sessions appear on Schedule tab → can browse weeks and tap YouTube links → "New Chat" button clears history.
-
-**Issues encountered and resolved:**
-1. **`agent-framework-anthropic` version**: PyPI has `>=1.0.0b260219`, not `>=1.0.0rc1` as planned
-2. **OpenTelemetry SpanAttributes compatibility**: agent-framework-core references attributes missing from `opentelemetry-semantic-conventions-ai` — fixed with `_otel_patch.py` monkey-patch
-3. **Content type API**: Beta uses unified `Content` class with `.type` string attribute, not separate `TextReasoningContent`/`FunctionCallContent` classes — fixed to use string matching
-4. **Extended thinking signature error**: Multi-turn conversations with thinking enabled fail with `thinking.signature: Field required` — disabled thinking (agent works fine without it)
-5. **React Native `atob()` missing**: Caused silent token deletion — replaced with custom `base64Decode()` in auth.ts and authStore.ts
-6. **MCP connection ordering**: API server must start AFTER MCP server to establish session — documented startup order
-7. **Tool event matching**: `function_call` streams 1000+ chunks (argument tokens) while `function_result` uses `call_id` not `name` — fixed with `call_id`-based tracking and deduplication
-8. **Plan save duplicates**: `save_workout_plan` now does upsert (delete existing + insert) with `UNIQUE(user_id, week_start)` constraint
-9. **Raw JSON flash during plan streaming**: Added `stripPlanBlock()` to hide partial ```plan blocks, shows "Building your plan..." spinner instead
-
-**MCP tools implemented (5 total at end of Phase 2, 8 total after Phase 3):**
-| Tool | Purpose |
-|---|---|
-| `get_user_profile` | Load user goals, experience, days, preferred unit |
-| `get_exercise_history` | Recent logged sets for progressive overload |
-| `get_planned_workouts` | Query existing sessions by date range |
-| `search_youtube` | Exercise demo URLs (stubbed — returns search URL) |
-| `save_workout_plan` | Persist plan + sessions (upsert per week) |
-
----
-
-#### Phase 3: Active Training — Journeys 5, 6, 7 & 8 (Hours 10-14) ✅ COMPLETED
-
-**Delivers:** User can start a workout, voice-log sets, manually edit mistakes, and complete the session.
-
-| Agent | Tasks | Journey | Files | Status |
-|---|---|---|---|---|
-| **backend-agent** | T9: Voice parse endpoint (Deepgram STT + Haiku parsing) | J6 | `backend/app/routes/voice.py` | ✅ |
-| | T10: Exercise log routes (POST, PATCH, DELETE, GET) | J6, J7 | `backend/app/routes/exercises.py` | ✅ |
-| | T11: Session status routes (start, complete, GET by id) | J5, J8 | `backend/app/routes/sessions.py` | ✅ |
-| | T12: MCP new tools: `add_session_to_week`, `update_session` | J11 | `backend/app/mcp/server.py` | ✅ |
-| | T12b: Fixed `get_planned_workouts` JOIN → LEFT JOIN | J4 | `backend/app/mcp/server.py` | ✅ |
-| | T12c: Fixed AnthropicClient module-level instantiation | — | `backend/app/agent/trainer.py` | ✅ |
-| **frontend-workout-agent** | T9: Active workout screen (exercise list + timer) | J5 | `mobile/app/(tabs)/workout/[sessionId].tsx` | ✅ |
-| | T9b: Fetch session from API when not in store (404 fix) | J5 | `mobile/app/(tabs)/workout/[sessionId].tsx` | ✅ |
-| | T10: VoiceButton (toggle tap, confirmation dialog with transcript) | J6 | `mobile/components/workout/VoiceButton.tsx` | ✅ |
-| | T10b: Voice service (Deepgram via backend, expo-av recording) | J6 | `mobile/services/voice.ts` | ✅ |
-| | T11: SetLogger component (display logged sets, tap to edit/delete) | J6, J7 | `mobile/components/workout/SetLogger.tsx` | ✅ |
-| | T12: ManualSetDialog (add/edit weight/reps/RPE) | J7 | `mobile/components/workout/ManualSetDialog.tsx` | ✅ |
-| | T13: Workout completion flow (complete button, web compat) | J8 | `mobile/app/(tabs)/workout/[sessionId].tsx` | ✅ |
-| | T14: Schedule — "Start Workout" on all scheduled sessions (not just today) | J5 | `mobile/app/(tabs)/schedule.tsx` | ✅ |
-| | T15: Made `planId` optional in TypeScript types | — | `mobile/types/index.ts` | ✅ |
-
-**Gate:** ✅ Can tap "Start Workout" from schedule (any day) → see exercises → tap mic → say "80kg for 8 reps" → see transcript + parsed result → confirm to log → tap set to edit/delete → complete workout → navigates back.
-
-**Issues encountered and resolved:**
-1. **"Start Workout" only showed for today's sessions** — Removed `isToday()` restriction, button now shows for all `scheduled` sessions
-2. **404 when tapping "Start Workout" on non-current-week sessions** — Session wasn't in store's `sessions` array. Added API fallback: fetches from `GET /api/sessions/{id}` when not found in store
-3. **`planId` required in TypeScript** — Sessions created by `add_session_to_week` or manual DB inserts have `planId: null`. Made it optional: `planId?: string | null`
-4. **AI couldn't add individual sessions** — `UNIQUE(user_id, week_start)` on `workout_plans` meant the agent could only replace entire weeks. Added `add_session_to_week` (find-or-create plan, replace single day) and `update_session` (modify title/exercises) MCP tools
-5. **`Alert.alert` callbacks don't work on web** — "Complete Workout" confirmation never fired on Expo Web. Added `Platform.OS === 'web'` check with `window.confirm` fallback
-6. **`AnthropicClient` created at module import time** — Failed before `.env` was loaded. Moved instantiation into `create_agent()` function with explicit `api_key=settings.ANTHROPIC_API_KEY`
-7. **Voice hold-to-record UX issues** — Short taps produced empty audio (0% confidence). Changed to toggle tap (tap to start, tap to stop)
-8. **Voice auto-logged without user confirmation** — Backend returned transcript + parsed data, frontend now shows confirmation dialog with "You said:" transcript and "Parsed as:" weight × reps before logging
-9. **Snackbar barely readable** — Increased duration to 6s, added accent border and explicit text color
-10. **Expo SDK 52 → 54 upgrade** — Expo Go on phone required SDK 54. Upgraded all deps, installed `react-native-worklets` (peer dep of reanimated v4)
-11. **Exercise name fragmentation** — "Bench Press" vs "Barbell Bench Press" treated as separate exercises, breaking progressive overload tracking. Added canonical `exercises` table (62 seeded exercises with aliases), `pg_trgm` extension for fuzzy matching, and a 3-tier resolver (exact → alias → trigram ≥ 0.4) applied at all write points. Unknown exercises are auto-inserted as new canonical entries. Added `search_exercises` MCP tool so the AI agent can look up correct names.
-
-**Voice logging flow (final):**
-1. Tap mic → starts recording (icon changes to stop, button turns red)
-2. Tap again → stops, sends audio to `POST /api/voice/parse`
-3. Backend: Deepgram STT → Claude Haiku parses → returns `{transcript, parsed: {weightKg, reps, rpe}}`
-4. Confirmation dialog shows transcript + parsed values
-5. "Log Set" confirms → calls `POST /api/exercises/log` → set appears in UI
-6. "Redo" dismisses → user can try again
-
-**MCP tools (8 total after Phase 3):**
-| Tool | Purpose |
-|---|---|
-| `get_user_profile` | Load user goals, experience, days, preferred unit |
-| `get_exercise_history` | Recent logged sets for progressive overload (resolves name before query) |
-| `get_planned_workouts` | Query existing sessions by date range (LEFT JOIN) |
-| `search_youtube` | Exercise demo URLs (stubbed — returns search URL) |
-| `save_workout_plan` | Persist plan + sessions (upsert per week, resolves exercise names) |
-| `add_session_to_week` | Add/replace a single session on a given day (resolves exercise names) |
-| `update_session` | Update an existing session's title or exercises (resolves exercise names) |
-| `search_exercises` | Search canonical exercise database by name (trigram similarity) |
-
----
-
-#### Phase 4: Progress & Intelligence — Journeys 9, 10 & 11 (Hours 14-16)
-
-**Delivers:** User can track progress over time, ask AI for ad-hoc advice, and re-plan their schedule via chat.
-
-**Prerequisite from Phase 3:** Exercise name resolver is already integrated at all write points. All `exercise_logs` entries use canonical names, so progress queries return unified history (e.g. "bench press" and "BB bench" both resolve to "Barbell Bench Press" on insert). The `search_exercises` MCP tool lets the AI agent verify exercise names before generating plans.
-
-| Agent | Tasks | Journey | Files | Hours |
-|---|---|---|---|---|
-| **backend-agent** | T13: Exercise history query route (for charts) — query `exercises` table for exercise picker, resolve names on read queries | J9 | `backend/app/routes/exercises.py` | 0.5h |
-| | T14: Backend route tests (chat, sessions, exercises, exercise resolver) | All | `backend/tests/` | 1h |
-| **frontend-chat-agent** | T16: Error handling + offline/retry states | J10, J11 | Various chat components | 0.5h |
-| **frontend-workout-agent** | T14: Progress screen — exercise picker populated from `exercises` table (canonical names), line chart for selected exercise | J9 | `mobile/app/(tabs)/progress.tsx` | 1.5h |
-| | T15: WeightChart component (weight over time) | J9 | `mobile/components/progress/WeightChart.tsx` | 1h |
-| | T16: HistoryTable component (recent sets) | J9 | `mobile/components/progress/HistoryTable.tsx` | 0.5h |
-| | T17: RestTimer component | J5 | `mobile/components/workout/RestTimer.tsx` | 0.5h |
-
-**Gate:** Can view progress chart for any exercise → see weight trend over time (all data unified under canonical names) → ask AI "should I deload?" and get contextual advice using `get_exercise_history` (which resolves names) → say "move Thursday to Saturday" and schedule updates.
-
-*Note: Journeys 10 (ad-hoc chat) and 11 (re-plan) work automatically once Journey 3's chat infrastructure is complete — the AI agent handles these via existing MCP tools (including `search_exercises` for name verification). This phase validates they work correctly.*
-
----
-
-#### Phase 5: Polish & Journey 12 (Hours 16-18)
-
-**Delivers:** Full weekly loop works end-to-end. App is polished and testable.
-
-| Agent | Tasks | Journey | Files | Hours |
-|---|---|---|---|---|
-| **backend-agent** | T15: Edge case handling (empty history, first-time user) | J12 | Various routes | 0.5h |
-| **frontend-chat-agent** | T17: Chat UX polish (auto-scroll, retry on error, loading states) | All | Chat components | 0.5h |
-| **frontend-workout-agent** | T18: Schedule empty states ("No plan yet — chat with your trainer") | J12 | `mobile/app/(tabs)/schedule.tsx` | 0.5h |
-| | T19: Workout index screen (list/start sessions) | J5 | `mobile/app/(tabs)/workout/index.tsx` | 0.5h |
-| **Lead (you)** | Full Journey 12 walkthrough: plan week → train → log → check progress → re-plan | J12 | All | 1h |
-| | Bug fixes + agent direction | All | All | Ongoing |
-
-**Final gate:** Open app Monday → "Plan my week" → schedule populates → start Monday's workout → voice log all sets → complete → check progress → ask AI to adjust Wednesday → re-plan saves → repeat through week.
-
----
-
-### Journey Dependency Graph
-
-```
-J1 (Sign In)
- └─→ J2 (Profile Setup)
-      └─→ J3 (Workout Planning Chat)
-           ├─→ J4 (Browse Schedule)
-           │    └─→ J5 (Start Workout)
-           │         ├─→ J6 (Voice Log Sets)
-           │         ├─→ J7 (Manual Edit)
-           │         └─→ J8 (Complete Workout)
-           │              └─→ J9 (Progress)
-           ├─→ J10 (Ad-hoc Chat)
-           └─→ J11 (Re-plan Schedule)
-                     └─→ J12 (Weekly Loop) ← integrates all
-```
-
-### CLAUDE.md for Agent Team
-
-```markdown
-# GymTrainer Project
-
-## Project Overview
-Personal AI gym trainer React Native app. Backend is Python FastAPI on Azure,
-AI agent uses Microsoft Agent Framework with Claude Sonnet, tools via MCP.
-
-## Architecture
-- `infra/` — Terraform for Azure (PostgreSQL, Container Apps, Key Vault)
-- `backend/` — Python FastAPI + MCP tool server + Agent Framework
-- `mobile/` — React Native Expo (Android only)
-
-## Conventions
-- TypeScript strict mode in mobile/
-- Python 3.12+ with type hints in backend/
-- All API responses use camelCase JSON
-- Exercise names are canonical: "Barbell Bench Press" not "bench"
-- Use Zustand for all React Native state
-- All dates in ISO 8601 UTC
-
-## File Ownership Rules
-- infra-agent: only touches files in `infra/`, `backend/Dockerfile`, `.github/`, and `mobile/eas.json`
-- backend-agent: only touches files in `backend/` (except Dockerfile)
-- frontend-chat-agent: owns `mobile/app/(tabs)/index.tsx`, `mobile/components/chat/`,
-  `mobile/services/api.ts`, `mobile/services/sse.ts`, `mobile/stores/chatStore.ts`,
-  `mobile/stores/authStore.ts`, `mobile/app/auth/`, `mobile/app/_layout.tsx`,
-  `mobile/theme.ts` (React Native Paper theme config)
-- frontend-workout-agent: owns `mobile/app/(tabs)/schedule.tsx`,
-  `mobile/app/(tabs)/workout/`, `mobile/app/(tabs)/progress.tsx`,
-  `mobile/app/(tabs)/profile.tsx`, `mobile/components/workout/`,
-  `mobile/components/progress/`, `mobile/services/voice.ts`,
-  `mobile/stores/workoutStore.ts`, `mobile/stores/profileStore.ts`,
-  `mobile/types/index.ts`
-
-## Shared interfaces (types/index.ts) — owned by frontend-workout-agent
-Other agents should coordinate via lead before modifying types.
-
-## Testing
-- Backend: pytest with httpx for route tests, MCP tool tests
-- Mobile unit: Jest for stores, services, parsing logic
-- Mobile component: React Native Testing Library for UI
-- TypeScript: strict mode, `tsc --noEmit` must pass
-- Lint: ESLint must pass
-```
-
----
-
-## Key Dependencies
-
-### Backend (Python)
-
-```txt
-# requirements.txt
-fastapi>=0.115
-uvicorn[standard]>=0.34
-agent-framework-anthropic>=1.0.0rc1
-fastmcp>=0.5
-asyncpg>=0.30
-python-jose[cryptography]>=3.3      # HS256 JWT creation + validation
-passlib[bcrypt]>=1.7                # bcrypt password hashing
-httpx>=0.27                          # YouTube API calls
-pydantic>=2.10
-```
-
-### Mobile (React Native)
-
-```json
-{
-  "dependencies": {
-    "expo": "~52.x",
-    "expo-router": "~4.x",
-    "expo-secure-store": "*",
-    "expo-build-properties": "~0.13.x",  // kotlinVersion + enableJetifier for Android builds
-    "react-native-paper": "^5.x",
-    "react-native-safe-area-context": "*",
-    "@expo/vector-icons": "*",          // replaces react-native-vector-icons
-    "zustand": "^4.x",
-    "react-native-chart-kit": "^6.x",
-    "react-native-webview": "*",
-    "date-fns": "^3.x"
-  },
-  "devDependencies": {
-    "jest": "^29.x",
-    "@testing-library/react-native": "^12.x",
-    "jest-expo": "~52.x",
-    "typescript": "^5.x",
-    "@types/react": "~18.x",
-    "eslint": "^9.x"
-  }
-}
-```
-
----
-
-## Android Testing & Deployment Pipeline
-
-### Development Loop
-
-Day-to-day development uses `npx expo start` with a **development build** — a custom debug APK that includes all native modules (voice recognition, secure store, etc.). This is built once with EAS and installed on your phone or emulator. Code changes hot-reload instantly without rebuilding.
-
-```bash
-# One-time: create development build
-eas build --profile development --platform android
-
-# Daily: start dev server, phone connects automatically
-npx expo start
-```
-
-For UI-only work, **Expo Go** (scan QR code) is faster but won't support native modules like secure store. A development build is needed from early on. Note: Expo Go won't work when tethered to phone hotspot (device-to-device traffic blocked) — use EAS preview builds instead.
-
-### Testing Strategy
-
-| Layer | Tool | What it covers |
-|-------|------|---------------|
-| **Unit** | Jest (bundled with Expo) | Zustand stores, API service helpers, voice transcript parsing, date utilities |
-| **Component** | React Native Testing Library | Render components, simulate taps/input, assert UI state |
-| **Backend** | pytest + httpx | FastAPI route tests, MCP tool tests, voice parse endpoint |
-| **E2E** (optional) | Maestro | Full device flows via YAML scripts |
-
-Maestro E2E example:
-
-```yaml
-appId: com.gymtrainer.app
----
-- launchApp
-- tapOn: "Start Workout"
-- tapOn: "Bench Press"
-- assertVisible: "Previous best"
-- tapOn: "🎤"
-- inputText: "80 kilos for 8 reps"
-- assertVisible: "80kg × 8"
-```
-
-For a personal app, unit tests + component tests are the priority. E2E can be added later once core flows stabilise.
-
-### EAS Build Profiles
-
-All build configuration lives in `eas.json`:
-
-```json
-{
-  "cli": { "version": ">= 14.0.0" },
-  "build": {
-    "development": {
-      "developmentClient": true,
-      "distribution": "internal",
-      "android": { "buildType": "apk" }
-    },
-    "preview": {
-      "distribution": "internal",
-      "android": { "buildType": "apk" }
-    },
-    "production": {
-      "autoIncrement": true,
-      "android": { "buildType": "app-bundle" }
-    }
-  },
-  "submit": {
-    "production": {
-      "android": {
-        "serviceAccountKeyPath": "./play-store-key.json",
-        "track": "internal"
-      }
-    }
-  }
-}
-```
-
-| Profile | Output | Use case |
-|---------|--------|----------|
-| `development` | Debug APK with dev client | Daily development on phone/emulator |
-| `preview` | Release-signed APK | Share with testers — direct install, no store |
-| `production` | AAB (App Bundle) | Google Play Store submission |
-
-### Build & Deploy Commands
-
-```bash
-# Development build (once, or when native deps change)
-eas build --profile development --platform android
-
-# Preview build (shareable APK — send link to testers)
-eas build --profile preview --platform android
-
-# Production build + auto-submit to Play Store
-eas build --profile production --platform android --auto-submit
-
-# OTA update (JS-only changes, no rebuild needed)
-eas update --branch production --message "Fixed chat scroll bug"
-```
-
-**OTA updates** are the killer feature — once a build is installed, JS/asset changes can be pushed instantly without going through the Play Store. Users get the update next app launch. Only native module changes require a new build.
-
-### GitHub Actions CI/CD
-
-The pipeline uses path-based filtering (`dorny/paths-filter`) to only deploy what changed. See `.github/workflows/ci.yml` for the full workflow.
-
-**Triggers:**
+## CI/CD Pipeline
 
 | Trigger | What runs |
 |---------|-----------|
 | **PR** | expo-doctor, TypeScript, ESLint, Jest, pytest |
-| **Push to main** (backend/ changed) | Above + Docker build → ACR push → Container App update |
+| **Push to main** (backend/ changed) | Above + Docker build → ACR → Container App revision |
 | **Push to main** (mobile/ changed) | Above + EAS preview APK build |
-| **Push to main** (both changed) | Above + backend deploy AND preview build in parallel |
 | **Git tag `v*`** | Above + EAS production app-bundle for Play Store |
 
-**Required GitHub Secrets:**
-
-| Secret | Purpose |
-|--------|---------|
-| `AZURE_CREDENTIALS` | Service principal JSON for Azure deployment (contributor on gym-trainer-rg) |
-| `EXPO_TOKEN` | EAS access token for building APKs |
-
-### Development Workflow
-
-All feature work goes through feature branches and PRs. Never push directly to main.
-
-```
-1. git checkout -b feat/<description>
-2. Implement feature
-3. Run local checks:
-   └─ cd mobile && npm run preflight  (if mobile changes)
-   └─ cd backend && pytest            (if backend changes)
-4. git push → open PR
-   └─ GitHub Actions validates (expo-doctor, tsc, eslint, jest, pytest)
-5. Shoten reviews and merges to main
-6. GitHub Actions auto-deploys only what changed:
-   └─ backend/ changed → Docker build → ACR → Azure Container App
-   └─ mobile/ changed → EAS preview APK build
-```
-
-### Mobile Preflight
-
-**Always run before committing mobile dependency or native config changes:**
-
-```bash
-cd mobile && npm run preflight
-```
-
-Checks expo-doctor, peer dependencies, TypeScript, and native prebuild (~30 seconds locally) instead of discovering Gradle/Kotlin/native config issues after 20 minutes in the EAS build queue.
-
-### Deployment Path
-
-```
-Feature branch (local dev + hot reload)
-    │
-    ├─ git push → PR → GitHub Actions
-    │     ├─ expo-doctor
-    │     ├─ TypeScript check
-    │     ├─ ESLint
-    │     ├─ Jest unit tests
-    │     └─ pytest backend tests
-    │
-    ├─ PR merged to main → auto-deploy (only what changed)
-    │     ├─ backend/ changed → Docker → ACR → Azure Container App
-    │     └─ mobile/ changed → EAS preview APK
-    │
-    ├─ Preview APK → share download link with testers
-    │
-    ├─ OTA updates → eas update (JS-only changes, instant)
-    │
-    └─ Play Store release
-          ├─ git tag v1.0.0 && git push --tags
-          ├─ GitHub Actions → eas build --profile production
-          ├─ eas submit → internal test track
-          └─ Promote to production in Play Console
-```
-
-**For GymTrainer's early phase**, you'll live on preview builds — build an APK, install it on your phone, use it at the gym, iterate. The Play Store path is there when you're ready but there's no rush. The $25 Google Play Developer fee is the only cost.
-
-### EAS Credentials Management
-
-EAS handles Android signing automatically:
-
-- First build: EAS generates an Android keystore and stores it securely on their servers
-- Subsequent builds: same keystore is reused automatically
-- You can also provide your own keystore via `eas credentials`
-- Preview and production profiles can share or use separate keystores
-
-No need to manually manage `.jks` files or worry about losing signing keys.
+Deploy script tags images with git commit SHA to ensure Azure always creates a new revision.
 
 ---
 
-## Design Decisions & Rationale
+## Design Decisions
 
-1. **Expo managed workflow + React Native Paper** — All required native modules have Expo config plugins. Paper provides Material Design 3 components that feel native on Android, with built-in theming, dark mode, and accessibility. Most stable component library for Claude Code agents to work with.
+1. **Expo managed workflow + React Native Paper** — MD3 components, built-in theming/dark mode, Expo config plugins for all native modules
+2. **JSONB in PostgreSQL** — Rich JSON operators for plan/exercise/goals columns, `asyncpg` for async access
+3. **LLM voice parsing via Haiku** — Handles "same as last time but add 5", "drop set", "to failure" — regex can't
+4. **SSE over WebSockets** — Simpler, HTTP-based, no bidirectional needed for chat streaming
+5. **MCP over inline tools** — Independently testable, reusable across agents, compatible with Claude Desktop
+6. **Agent Framework over raw Claude API** — Session management, middleware, OpenTelemetry, model-agnostic
+7. **Azure Container Apps over Functions** — Long-running SSE connections, scales to zero
+8. **Chat-first UX** — Planning happens conversationally, structured output renders as interactive cards
 
-2. **JSONB in Azure PostgreSQL** — Native JSONB type with rich operators (`->`, `->>`, `@>`) for querying JSON columns (plan_json, exercises, training_goals, tool_calls). Much cleaner than NVARCHAR workarounds. Uses `asyncpg` for fast async Python access.
+---
 
-3. **LLM voice parsing via Haiku** — Fast (~200-400ms), cheap (~£0.005/day), and handles natural language ("same as last time but add 5", "drop set", "to failure") that regex can't.
+## Remaining Work
 
-4. **SSE over WebSockets** — Chat is request-response with streaming. SSE is simpler, HTTP-based, and doesn't need bidirectional communication. Less infra complexity.
+### Journey 9: Progress Screen
+- Exercise picker populated from canonical `exercises` table
+- Line chart (weight over time) using `react-native-chart-kit`
+- History table (recent sets)
+- Backend route for chart data query
 
-5. **MCP over inline tools** — Tools are independently testable, reusable across agents, and could plug into Claude Desktop or other MCP clients later.
+### Polish & Quality
+- RestTimer component for active workouts
+- Error handling / offline / retry states in chat
+- Schedule empty states ("No plan yet — chat with your trainer")
+- Workout index screen (list/start sessions)
+- Full Journey 12 walkthrough validation
 
-6. **Agent Framework over raw Claude API** — Gives us session management, middleware (auth, logging), OpenTelemetry observability, and a clean abstraction if we ever swap models.
-
-7. **Azure Container Apps over Functions** — The agent needs long-running SSE connections. Functions have timeout constraints. Container Apps supports streaming naturally and scales to zero.
-
-8. **4-agent team, journey-based phases** — Clean file ownership boundaries (infra / backend / frontend-chat / frontend-workout) with zero overlap. After Foundation, work is organised around delivering complete user journeys end-to-end across all agents, not disconnected features.
-
-9. **Terraform modules** — Infrastructure-as-code aligns with your Benchmark approach. Modules are reusable and the state file tracks drift.
-
-10. **Chat-first UX** — The chat screen is the home tab. Planning happens conversationally, leveraging Claude's strengths. Structured output renders as interactive cards.
+### Future Considerations
+- iOS support (requires Apple Developer account — $99/year)
+- Google Play Store release (tag `v*` triggers production build)
+- Key Vault for secrets (currently env vars on Container App)
+- Native Android STT as alternative to Deepgram (package TBD — `@react-native-voice/voice` was removed due to AndroidX conflicts)
