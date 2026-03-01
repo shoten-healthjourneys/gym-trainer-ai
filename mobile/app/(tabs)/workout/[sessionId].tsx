@@ -127,7 +127,7 @@ export default function ActiveWorkoutScreen() {
       </View>
 
       <FlatList
-        data={activeSession.exercises}
+        data={activeSession.exerciseGroups.flatMap((g) => g.exercises)}
         keyExtractor={(item) => item.name}
         renderItem={renderExercise}
         contentContainerStyle={styles.list}

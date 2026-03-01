@@ -74,7 +74,7 @@ export default function WorkoutIndexScreen() {
                 {session.title}
               </Text>
               <Text variant="bodySmall" style={styles.muted}>
-                {session.exercises.length} exercises
+                {session.exerciseGroups.flatMap((g) => g.exercises).length} exercises
               </Text>
               <Button
                 style={styles.resumeBtn}

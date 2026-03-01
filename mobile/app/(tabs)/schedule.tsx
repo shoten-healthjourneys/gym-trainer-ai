@@ -7,7 +7,7 @@ import { format, parseISO } from 'date-fns';
 import { ScreenContainer, Card, CardHeader, CardContent, Badge, Button } from '../../components/ui';
 import { useWorkoutStore } from '../../stores/workoutStore';
 import { colors, spacing, radii } from '../../theme';
-import type { WorkoutSession, ExerciseInSession, SessionStatus } from '../../types';
+import type { WorkoutSession, ExerciseInSession, ExerciseGroup, SessionStatus } from '../../types';
 
 const STATUS_VARIANT: Record<SessionStatus, 'accent' | 'muted' | 'success' | 'destructive'> = {
   scheduled: 'muted',
@@ -23,12 +23,17 @@ const STATUS_LABEL: Record<SessionStatus, string> = {
   skipped: 'Skipped',
 };
 
+function getAllExercises(session: WorkoutSession): ExerciseInSession[] {
+  return session.exerciseGroups.flatMap((g) => g.exercises);
+}
+
 function SessionCard({ session }: { session: WorkoutSession }) {
   const [expanded, setExpanded] = useState(false);
   const router = useRouter();
   const dayLabel = format(parseISO(session.scheduledDate), 'eee MMM d');
   const isScheduled = session.status === 'scheduled';
   const isInProgress = session.status === 'in_progress';
+  const allExercises = getAllExercises(session);
 
   return (
     <Card style={styles.sessionCard}>
@@ -47,7 +52,7 @@ function SessionCard({ session }: { session: WorkoutSession }) {
           </View>
           <View style={styles.badges}>
             <Badge
-              label={`${session.exercises.length} exercises`}
+              label={`${allExercises.length} exercises`}
               variant="accent"
             />
             <Badge
@@ -64,7 +69,7 @@ function SessionCard({ session }: { session: WorkoutSession }) {
       </TouchableOpacity>
       {expanded && (
         <CardContent>
-          {session.exercises.map((ex, i) => (
+          {allExercises.map((ex, i) => (
             <View key={i} style={styles.exerciseRow}>
               <View style={styles.exerciseInfo}>
                 <Text variant="bodySmall" style={styles.exerciseName}>
