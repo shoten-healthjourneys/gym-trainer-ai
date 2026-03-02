@@ -51,6 +51,8 @@ interface WorkoutState extends TimerState {
   fetchWeekSessions: (weekStart: string) => Promise<void>;
   startSession: (sessionId: string) => Promise<void>;
   completeSession: (sessionId: string) => Promise<void>;
+  cancelSession: (sessionId: string) => Promise<void>;
+  deleteSession: (sessionId: string) => Promise<void>;
   reopenSession: (sessionId: string) => Promise<void>;
   logSet: (sessionId: string, exerciseName: string, setData: { weightKg?: number; reps?: number; distanceM?: number; durationSeconds?: number; rpe?: number; notes?: string; roundNumber?: number }) => Promise<void>;
   updateSet: (logId: string, updates: Partial<ExerciseLog>) => Promise<void>;
@@ -128,6 +130,39 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         exerciseLogs: {},
         ...initialTimerState,
         sessions: state.sessions.map((s) => (s.id === sessionId ? session : s)),
+        loading: false,
+      }));
+    } catch (e) {
+      set({ loading: false, error: (e as Error).message });
+    }
+  },
+
+  cancelSession: async (sessionId: string) => {
+    set({ loading: true, error: null });
+    try {
+      const raw = await post<WorkoutSession>(`/api/sessions/${encodeURIComponent(sessionId)}/reset`, {});
+      const session = migrateSession(raw);
+      set((state) => ({
+        activeSession: null,
+        exerciseLogs: {},
+        ...initialTimerState,
+        sessions: state.sessions.map((s) => (s.id === sessionId ? session : s)),
+        loading: false,
+      }));
+    } catch (e) {
+      set({ loading: false, error: (e as Error).message });
+    }
+  },
+
+  deleteSession: async (sessionId: string) => {
+    set({ loading: true, error: null });
+    try {
+      await del(`/api/sessions/${encodeURIComponent(sessionId)}`);
+      set((state) => ({
+        activeSession: null,
+        exerciseLogs: {},
+        ...initialTimerState,
+        sessions: state.sessions.filter((s) => s.id !== sessionId),
         loading: false,
       }));
     } catch (e) {
