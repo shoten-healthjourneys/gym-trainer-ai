@@ -139,6 +139,48 @@ az postgres flexible-server parameter set --resource-group gym-trainer-rg \
 - `react` and `react-dom` are excluded from expo install --check (managed via overrides)
 - When upgrading Expo SDK, check KSP supported Kotlin versions at https://github.com/google/ksp/releases
 
+## API Endpoints
+
+All endpoints except `/health` require JWT auth via `Authorization: Bearer <token>`.
+Base URL (prod): `https://gym-trainer-api.bluehill-f327b734.uksouth.azurecontainerapps.io`
+
+### Health
+- `GET /health` — `{"status": "ok"}`
+
+### Auth (`/auth`)
+- `POST /auth/register` — Register (email, password, displayName) → token + user
+- `POST /auth/login` — Login (email, password) → token + user
+
+### Profile (`/api`)
+- `GET /api/profile` — Get current user profile
+- `PUT /api/profile` — Update profile fields
+
+### Sessions (`/api/sessions`)
+- `GET /api/sessions?week_start=YYYY-MM-DD` — List sessions for 7-day week
+- `GET /api/sessions/{id}` — Get single session
+- `POST /api/sessions/{id}/start` — scheduled → in_progress
+- `POST /api/sessions/{id}/complete` — in_progress → completed
+- `POST /api/sessions/{id}/reopen` — completed → in_progress
+- `POST /api/sessions/{id}/reset` — any → scheduled (clears started_at/completed_at)
+- `DELETE /api/sessions/{id}` — Delete session + exercise logs
+
+### Exercise Logs (`/api/exercises`)
+- `POST /api/exercises/log` — Log a set (sessionId, exerciseName, weightKg, reps, etc.)
+- `GET /api/exercises/log?session_id=&exercise_name=` — List logs for exercise in session
+- `PATCH /api/exercises/log/{id}` — Update log fields
+- `DELETE /api/exercises/log/{id}` — Delete single log (204)
+- `GET /api/exercises/names` — All distinct exercise names for user
+- `GET /api/exercises/history?exercise_name=&days=` — Aggregated history (max weight, best reps per day)
+- `GET /api/exercises/history/detail?exercise_name=&days=` — Detailed per-set history grouped by date
+
+### Voice (`/api/voice`)
+- `POST /api/voice/parse` — Upload audio → transcribe → parse → return exercise log values
+
+### Chat
+- `POST /chat/stream` — SSE stream with AI agent (message in body)
+- `GET /chat/history` — Last 50 messages
+- `DELETE /chat/history` — Clear chat history
+
 ## Testing
 - Backend: pytest with httpx for route tests, MCP tool tests
 - Mobile unit: Jest for stores, services, parsing logic
