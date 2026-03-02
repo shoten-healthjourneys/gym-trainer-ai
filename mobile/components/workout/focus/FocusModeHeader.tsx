@@ -68,11 +68,11 @@ export function FocusModeHeader({
 
 const styles = StyleSheet.create({
   container: {
-    height: 56,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.background,
     paddingHorizontal: spacing.base,
+    paddingBottom: spacing.sm,
   },
   closeButton: {
     width: 40,

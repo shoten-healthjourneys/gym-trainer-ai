@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { Alert, Modal, Platform, StyleSheet, View } from 'react-native';
+import { Portal } from 'react-native-paper';
 import { useKeepAwake } from 'expo-keep-awake';
 import { colors } from '../../../theme';
 import { FocusModeHeader } from './FocusModeHeader';
@@ -156,19 +157,21 @@ export function FocusMode({
       presentationStyle="fullScreen"
       onRequestClose={handleClose}
     >
-      <View style={styles.container}>
-        <FocusModeHeader
-          exerciseName={exerciseName}
-          currentIndex={currentGroupIndex}
-          totalGroups={totalGroups}
-          onClose={handleClose}
-          onPrev={handlePrev}
-          onNext={handleNext}
-        />
-        <View style={styles.content}>
-          {renderContent()}
+      <Portal.Host>
+        <View style={styles.container}>
+          <FocusModeHeader
+            exerciseName={exerciseName}
+            currentIndex={currentGroupIndex}
+            totalGroups={totalGroups}
+            onClose={handleClose}
+            onPrev={handlePrev}
+            onNext={handleNext}
+          />
+          <View style={styles.content}>
+            {renderContent()}
+          </View>
         </View>
-      </View>
+      </Portal.Host>
     </Modal>
   );
 }
