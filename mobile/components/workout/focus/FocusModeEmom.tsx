@@ -6,7 +6,7 @@ import { Button, TextInput } from '../../ui';
 import { colors, spacing, radii } from '../../../theme';
 import { useWorkoutStore } from '../../../stores/workoutStore';
 import type { ExerciseGroup } from '../../../types';
-import { formatTime, hapticTick, hapticWarning, hapticSuccess } from './focusUtils';
+import { formatTime, hapticWarning, hapticSuccess, countdownWarningTick } from './focusUtils';
 
 interface FocusModeEmomProps {
   group: ExerciseGroup;
@@ -61,7 +61,7 @@ export function FocusModeEmom({ group, sessionId, onComplete }: FocusModeEmomPro
           hapticWarning();
           return 0;
         }
-        if (prev <= 4) hapticTick();
+        if (prev <= 5) countdownWarningTick();
         return prev - 1;
       });
     }, 1000);
@@ -90,7 +90,7 @@ export function FocusModeEmom({ group, sessionId, onComplete }: FocusModeEmomPro
           });
           return intervalSeconds;
         }
-        if (prev <= 4) hapticTick();
+        if (prev <= 5) countdownWarningTick();
         return prev - 1;
       });
     }, 1000);

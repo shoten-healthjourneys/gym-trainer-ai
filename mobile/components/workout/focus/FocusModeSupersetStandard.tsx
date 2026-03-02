@@ -137,6 +137,10 @@ export function FocusModeSupersetStandard({ group, sessionId }: FocusModeSuperse
     setPhase('idle');
   }, []);
 
+  const handleStartRest = useCallback(() => {
+    setPhase('resting');
+  }, []);
+
   // Determine total target sets (use the max sets across exercises)
   const targetSets = Math.max(...exercises.map((ex) => ex.sets));
 
@@ -196,6 +200,9 @@ export function FocusModeSupersetStandard({ group, sessionId }: FocusModeSuperse
         <View style={styles.actionArea}>
           <Button onPress={handleStartSet} style={styles.fullWidthButton}>
             Start Set
+          </Button>
+          <Button variant="ghost" onPress={handleStartRest} style={styles.startRestButton}>
+            Start Rest
           </Button>
         </View>
       )}
@@ -310,6 +317,9 @@ const styles = StyleSheet.create({
   },
   fullWidthButton: {
     width: '100%',
+  },
+  startRestButton: {
+    marginTop: spacing.sm,
   },
   logActions: {
     flexDirection: 'row',

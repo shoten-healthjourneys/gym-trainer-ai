@@ -10,7 +10,11 @@ import { SetLogger } from './SetLogger';
 import { RestTimer } from './RestTimer';
 import { VoiceButton } from './VoiceButton';
 import { ManualSetDialog } from './ManualSetDialog';
+import { SetStopwatch } from './focus/SetStopwatch';
+import { hapticTick } from './focus/focusUtils';
 import type { ExerciseInSession, TimerConfig } from '../../types';
+
+type CardPhase = 'idle' | 'setActive' | 'resting';
 
 interface ExerciseCardProps {
   exercise: ExerciseInSession;
@@ -41,7 +45,8 @@ export function ExerciseCard({
   const [addDialogVisible, setAddDialogVisible] = useState(false);
   const [snackMessage, setSnackMessage] = useState('');
   const [micAllowed, setMicAllowed] = useState(false);
-  const [restActive, setRestActive] = useState(false);
+  const [phase, setPhase] = useState<CardPhase>('idle');
+  const [stopwatchStartedAt, setStopwatchStartedAt] = useState<number | null>(null);
   const logs = useWorkoutStore((s) => s.exerciseLogs[exercise.name] ?? []);
   const prevLogsLength = useRef(logs.length);
   const initialLoadDone = useRef(false);
@@ -66,11 +71,31 @@ export function ExerciseCard({
       return;
     }
     if (logs.length > prevLogsLength.current) {
-      if (!suppressRest) setRestActive(true);
+      if (!suppressRest) {
+        setStopwatchStartedAt(null);
+        setPhase('resting');
+      } else {
+        setStopwatchStartedAt(null);
+        setPhase('idle');
+      }
       onSetLogged?.();
     }
     prevLogsLength.current = logs.length;
   }, [logs.length, suppressRest, onSetLogged]);
+
+  const handleStartSet = useCallback(() => {
+    hapticTick();
+    setStopwatchStartedAt(Date.now());
+    setPhase('setActive');
+  }, []);
+
+  const handleStartRest = useCallback(() => {
+    setPhase('resting');
+  }, []);
+
+  const handleRestDone = useCallback(() => {
+    setPhase('idle');
+  }, []);
 
   const handleManualAdd = useCallback(
     (data: { weightKg?: number; reps?: number; distanceM?: number; durationSeconds?: number; rpe?: number }) => {
@@ -118,30 +143,66 @@ export function ExerciseCard({
             logs={logs}
             exerciseType={exercise.exerciseType}
           />
-          {restActive && (
-            <RestTimer
-              durationSeconds={restSeconds}
-              onDismiss={() => setRestActive(false)}
-              onComplete={() => setRestActive(false)}
+
+          {/* Stopwatch when set is active */}
+          {phase === 'setActive' && (
+            <SetStopwatch
+              isRunning
+              startedAt={stopwatchStartedAt}
+              size="compact"
             />
           )}
-          <View style={styles.inputRow}>
-            {micAllowed && (
-              <VoiceButton
-                exerciseName={exercise.name}
-                sessionId={sessionId}
-                onClarification={setSnackMessage}
-              />
-            )}
-            <Button
-              variant="secondary"
-              size="small"
-              icon="plus"
-              onPress={() => setAddDialogVisible(true)}
-            >
-              Add Set
-            </Button>
-          </View>
+
+          {/* Rest timer */}
+          {phase === 'resting' && (
+            <RestTimer
+              durationSeconds={restSeconds}
+              onDismiss={handleRestDone}
+              onComplete={handleRestDone}
+            />
+          )}
+
+          {/* Buttons — hidden during resting phase */}
+          {phase !== 'resting' && (
+            <View style={styles.inputRow}>
+              {micAllowed && (
+                <VoiceButton
+                  exerciseName={exercise.name}
+                  sessionId={sessionId}
+                  onClarification={setSnackMessage}
+                />
+              )}
+              {phase === 'idle' && (
+                <Button
+                  variant="secondary"
+                  size="small"
+                  icon="play"
+                  onPress={handleStartSet}
+                >
+                  Start Set
+                </Button>
+              )}
+              <Button
+                variant="secondary"
+                size="small"
+                icon="plus"
+                onPress={() => setAddDialogVisible(true)}
+              >
+                Add Set
+              </Button>
+              {phase === 'idle' && !suppressRest && (
+                <Button
+                  variant="ghost"
+                  size="small"
+                  icon="timer-outline"
+                  onPress={handleStartRest}
+                >
+                  Rest
+                </Button>
+              )}
+            </View>
+          )}
+
           <ManualSetDialog
             visible={addDialogVisible}
             onDismiss={() => setAddDialogVisible(false)}
@@ -185,6 +246,7 @@ const styles = StyleSheet.create({
   },
   inputRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-around',
     paddingTop: spacing.base,

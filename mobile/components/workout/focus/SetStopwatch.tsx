@@ -8,9 +8,10 @@ interface SetStopwatchProps {
   isRunning: boolean;
   startedAt: number | null;
   onElapsed?: (seconds: number) => void;
+  size?: 'large' | 'compact';
 }
 
-export function SetStopwatch({ isRunning, startedAt, onElapsed }: SetStopwatchProps) {
+export function SetStopwatch({ isRunning, startedAt, onElapsed, size = 'large' }: SetStopwatchProps) {
   const [elapsed, setElapsed] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const onElapsedRef = useRef(onElapsed);
@@ -45,9 +46,11 @@ export function SetStopwatch({ isRunning, startedAt, onElapsed }: SetStopwatchPr
 
   const display = isRunning && startedAt != null ? formatTime(elapsed) : '0:00';
 
+  const isCompact = size === 'compact';
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.time}>{display}</Text>
+    <View style={[styles.container, isCompact && styles.containerCompact]}>
+      <Text style={[styles.time, isCompact && styles.timeCompact]}>{display}</Text>
     </View>
   );
 }
@@ -58,10 +61,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: spacing.lg,
   },
+  containerCompact: {
+    paddingVertical: spacing.sm,
+  },
   time: {
     fontSize: 64,
     fontVariant: ['tabular-nums'],
     color: colors.accent,
     fontWeight: '300',
+  },
+  timeCompact: {
+    fontSize: 28,
   },
 });
