@@ -251,3 +251,62 @@ async def reopen_session(
         session_id,
     )
     return _to_camel(updated)
+
+
+@router.post("/sessions/{session_id}/reset")
+async def reset_session(
+    session_id: uuid.UUID,
+    user: dict = Depends(get_current_user),
+    conn=Depends(get_db),
+):
+    """Reset a session back to scheduled, clearing started_at and completed_at."""
+    user_id = uuid.UUID(user["user_id"])
+    row = await fetch_one(
+        conn,
+        "SELECT * FROM workout_sessions WHERE id = $1 AND user_id = $2",
+        session_id, user_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if row["status"] == "scheduled":
+        raise HTTPException(status_code=400, detail="Session is already scheduled")
+
+    await execute(
+        conn,
+        "UPDATE workout_sessions SET status = 'scheduled', started_at = NULL, completed_at = NULL WHERE id = $1",
+        session_id,
+    )
+    updated = await fetch_one(
+        conn,
+        """SELECT id, user_id, plan_id, scheduled_date, title, status,
+                  exercises, started_at, completed_at, created_at, schema_version
+           FROM workout_sessions WHERE id = $1""",
+        session_id,
+    )
+    return _to_camel(updated)
+
+
+@router.delete("/sessions/{session_id}")
+async def delete_session(
+    session_id: uuid.UUID,
+    user: dict = Depends(get_current_user),
+    conn=Depends(get_db),
+):
+    """Delete a session and its exercise logs."""
+    user_id = uuid.UUID(user["user_id"])
+    row = await fetch_one(
+        conn,
+        "SELECT id, title, scheduled_date, status FROM workout_sessions WHERE id = $1 AND user_id = $2",
+        session_id, user_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    await execute(conn, "DELETE FROM exercise_logs WHERE session_id = $1", session_id)
+    await execute(conn, "DELETE FROM workout_sessions WHERE id = $1", session_id)
+
+    return {
+        "deleted": True,
+        "id": str(row["id"]),
+        "title": row["title"],
+    }
