@@ -18,6 +18,8 @@ export default function ActiveWorkoutScreen() {
   const exerciseLogs = useWorkoutStore((s) => s.exerciseLogs);
   const startSession = useWorkoutStore((s) => s.startSession);
   const completeSession = useWorkoutStore((s) => s.completeSession);
+  const cancelSession = useWorkoutStore((s) => s.cancelSession);
+  const deleteSession = useWorkoutStore((s) => s.deleteSession);
   const setActiveSession = useWorkoutStore((s) => s.setActiveSession);
   const loading = useWorkoutStore((s) => s.loading);
 
@@ -96,6 +98,63 @@ export default function ActiveWorkoutScreen() {
     }
   }, [sessionId, completeSession, router]);
 
+  const handleCancel = useCallback(async () => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('This will reset the workout to scheduled. Are you sure?')) {
+        if (sessionId) {
+          await cancelSession(sessionId);
+          router.back();
+        }
+      }
+    } else {
+      Alert.alert(
+        'Cancel Workout',
+        'This will reset the workout to scheduled. Are you sure?',
+        [
+          { text: 'No', style: 'cancel' },
+          {
+            text: 'Yes, Cancel',
+            onPress: async () => {
+              if (sessionId) {
+                await cancelSession(sessionId);
+                router.back();
+              }
+            },
+          },
+        ],
+      );
+    }
+  }, [sessionId, cancelSession, router]);
+
+  const handleDelete = useCallback(async () => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('This will permanently delete this workout and all logged sets. Are you sure?')) {
+        if (sessionId) {
+          await deleteSession(sessionId);
+          router.back();
+        }
+      }
+    } else {
+      Alert.alert(
+        'Delete Workout',
+        'This will permanently delete this workout and all logged sets. Are you sure?',
+        [
+          { text: 'No', style: 'cancel' },
+          {
+            text: 'Yes, Delete',
+            style: 'destructive',
+            onPress: async () => {
+              if (sessionId) {
+                await deleteSession(sessionId);
+                router.back();
+              }
+            },
+          },
+        ],
+      );
+    }
+  }, [sessionId, deleteSession, router]);
+
   const handleStartFocus = useCallback((index: number) => {
     setFocusGroupIndex(index);
   }, []);
@@ -150,6 +209,23 @@ export default function ActiveWorkoutScreen() {
         >
           Complete Workout
         </Button>
+        <Button
+          variant="secondary"
+          onPress={handleCancel}
+          disabled={loading}
+          style={styles.bottomBarButton}
+        >
+          Cancel Workout
+        </Button>
+        <Button
+          variant="ghost"
+          onPress={handleDelete}
+          disabled={loading}
+          labelStyle={styles.destructiveLabel}
+          style={styles.bottomBarButton}
+        >
+          Delete Workout
+        </Button>
       </View>
 
       <FocusMode
@@ -186,8 +262,15 @@ const styles = StyleSheet.create({
   },
   bottomBar: {
     padding: spacing.base,
+    gap: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
+  },
+  bottomBarButton: {
+    marginTop: 0,
+  },
+  destructiveLabel: {
+    color: colors.destructive,
   },
   center: {
     flex: 1,
