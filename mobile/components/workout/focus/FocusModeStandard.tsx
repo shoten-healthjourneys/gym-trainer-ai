@@ -92,6 +92,10 @@ export function FocusModeStandard({ group, sessionId }: FocusModeStandardProps) 
     setPhase('idle');
   }, []);
 
+  const handleStartRest = useCallback(() => {
+    setPhase('resting');
+  }, []);
+
   // Build target description
   const targetParts: string[] = [];
   targetParts.push(`${exercise.sets} x ${exercise.reps}`);
@@ -132,6 +136,9 @@ export function FocusModeStandard({ group, sessionId }: FocusModeStandardProps) 
         <View style={styles.actionArea}>
           <Button onPress={handleStartSet} style={styles.fullWidthButton}>
             Start Set
+          </Button>
+          <Button variant="ghost" onPress={handleStartRest} style={styles.startRestButton}>
+            Start Rest
           </Button>
         </View>
       )}
@@ -220,6 +227,9 @@ const styles = StyleSheet.create({
   },
   fullWidthButton: {
     width: '100%',
+  },
+  startRestButton: {
+    marginTop: spacing.sm,
   },
   logActions: {
     flexDirection: 'row',

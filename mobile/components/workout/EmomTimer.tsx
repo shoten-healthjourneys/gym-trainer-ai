@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Platform, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
-import * as Haptics from 'expo-haptics';
 import { useKeepAwake } from 'expo-keep-awake';
 import { Button, TextInput } from '../ui';
 import { colors, spacing, radii } from '../../theme';
 import { useWorkoutStore } from '../../stores/workoutStore';
+import { formatTime, hapticWarning, hapticSuccess, countdownWarningTick } from './focus/focusUtils';
 import type { ExerciseGroup } from '../../types';
 
 interface EmomTimerProps {
@@ -19,30 +19,6 @@ interface RoundLog {
   weightKg?: number;
   reps?: number;
   logged: boolean;
-}
-
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
-function hapticTick(): void {
-  if (Platform.OS !== 'web') {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-  }
-}
-
-function hapticWarning(): void {
-  if (Platform.OS !== 'web') {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
-  }
-}
-
-function hapticSuccess(): void {
-  if (Platform.OS !== 'web') {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-  }
 }
 
 type Phase = 'prep' | 'work' | 'complete';
@@ -86,7 +62,7 @@ export function EmomTimer({ group, sessionId, onComplete }: EmomTimerProps) {
           hapticWarning();
           return 0;
         }
-        if (prev <= 4) hapticTick();
+        if (prev <= 5) countdownWarningTick();
         return prev - 1;
       });
     }, 1000);
@@ -113,7 +89,7 @@ export function EmomTimer({ group, sessionId, onComplete }: EmomTimerProps) {
           });
           return intervalSeconds;
         }
-        if (prev <= 4) hapticTick();
+        if (prev <= 5) countdownWarningTick();
         return prev - 1;
       });
     }, 1000);
