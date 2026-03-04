@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, FlatList, Platform, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, Platform, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -21,6 +21,7 @@ export default function ActiveWorkoutScreen() {
   const cancelSession = useWorkoutStore((s) => s.cancelSession);
   const deleteSession = useWorkoutStore((s) => s.deleteSession);
   const setActiveSession = useWorkoutStore((s) => s.setActiveSession);
+  const refreshActiveSession = useWorkoutStore((s) => s.refreshActiveSession);
   const loading = useWorkoutStore((s) => s.loading);
 
   const [elapsed, setElapsed] = useState('00:00');
@@ -184,7 +185,7 @@ export default function ActiveWorkoutScreen() {
   return (
     <ScreenContainer padded={false}>
       <View style={styles.topBar}>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text variant="titleMedium" style={styles.title}>
             {activeSession.title}
           </Text>
@@ -193,6 +194,9 @@ export default function ActiveWorkoutScreen() {
             <Text variant="bodySmall" style={styles.timer}>{elapsed}</Text>
           </View>
         </View>
+        <TouchableOpacity onPress={refreshActiveSession} hitSlop={8} style={styles.refreshButton}>
+          <MaterialCommunityIcons name="refresh" size={22} color={colors.textSecondary} />
+        </TouchableOpacity>
       </View>
 
       <FlatList
@@ -241,9 +245,17 @@ export default function ActiveWorkoutScreen() {
 
 const styles = StyleSheet.create({
   topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
     padding: spacing.base,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
+  },
+  refreshButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     color: colors.textPrimary,

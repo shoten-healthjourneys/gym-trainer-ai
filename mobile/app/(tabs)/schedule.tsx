@@ -185,6 +185,10 @@ export default function ScheduleScreen() {
 
   const weekLabel = format(parseISO(currentWeekStart), "'Week of' MMM d");
 
+  const handleRefresh = useCallback(() => {
+    fetchWeekSessions(currentWeekStart);
+  }, [currentWeekStart, fetchWeekSessions]);
+
   return (
     <ScreenContainer scroll title="Schedule" padded={false}>
       <View style={styles.weekNav}>
@@ -202,6 +206,13 @@ export default function ScheduleScreen() {
           iconColor={colors.textSecondary}
           size={24}
           onPress={nextWeek}
+        />
+        <IconButton
+          icon="refresh"
+          iconColor={colors.textSecondary}
+          size={20}
+          onPress={handleRefresh}
+          disabled={loading}
         />
       </View>
 

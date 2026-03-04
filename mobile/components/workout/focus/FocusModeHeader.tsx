@@ -12,6 +12,7 @@ interface FocusModeHeaderProps {
   onClose: () => void;
   onPrev: () => void;
   onNext: () => void;
+  onRefresh?: () => void;
 }
 
 export function FocusModeHeader({
@@ -21,6 +22,7 @@ export function FocusModeHeader({
   onClose,
   onPrev,
   onNext,
+  onRefresh,
 }: FocusModeHeaderProps) {
   const insets = useSafeAreaInsets();
   const isFirst = currentIndex === 0;
@@ -31,6 +33,12 @@ export function FocusModeHeader({
       <TouchableOpacity onPress={onClose} hitSlop={8} style={styles.closeButton}>
         <MaterialCommunityIcons name="close" size={24} color={colors.textPrimary} />
       </TouchableOpacity>
+
+      {onRefresh && (
+        <TouchableOpacity onPress={onRefresh} hitSlop={8} style={styles.refreshButton}>
+          <MaterialCommunityIcons name="refresh" size={20} color={colors.textSecondary} />
+        </TouchableOpacity>
+      )}
 
       <Text variant="labelLarge" style={styles.indicator}>
         {currentIndex + 1} of {totalGroups}
@@ -77,6 +85,12 @@ const styles = StyleSheet.create({
   closeButton: {
     width: 40,
     height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  refreshButton: {
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
