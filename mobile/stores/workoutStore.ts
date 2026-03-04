@@ -49,6 +49,7 @@ interface WorkoutState extends TimerState {
   error: string | null;
 
   fetchWeekSessions: (weekStart: string) => Promise<void>;
+  refreshActiveSession: () => Promise<void>;
   startSession: (sessionId: string) => Promise<void>;
   completeSession: (sessionId: string) => Promise<void>;
   cancelSession: (sessionId: string) => Promise<void>;
@@ -102,6 +103,28 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       set({ sessions, loading: false });
     } catch (e) {
       set({ loading: false, error: (e as Error).message });
+    }
+  },
+
+  refreshActiveSession: async () => {
+    const { activeSession, currentWeekStart } = get();
+    if (!activeSession) return;
+    try {
+      const raw = await apiGet<WorkoutSession>(`/api/sessions/${encodeURIComponent(activeSession.id)}`);
+      const session = migrateSession(raw);
+      set((state) => ({
+        activeSession: session,
+        sessions: state.sessions.map((s) => (s.id === session.id ? session : s)),
+      }));
+    } catch {
+      // Session may have been deleted — silently ignore
+    }
+    // Also refresh the week list so schedule view stays in sync
+    try {
+      const raw = await apiGet<WorkoutSession[]>(`/api/sessions?week_start=${encodeURIComponent(currentWeekStart)}`);
+      set({ sessions: raw.map(migrateSession) });
+    } catch {
+      // Ignore — non-critical
     }
   },
 

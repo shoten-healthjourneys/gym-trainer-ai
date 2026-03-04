@@ -1,7 +1,16 @@
 import { create } from 'zustand';
 import { del, getChatHistory } from '../services/api';
 import { streamChat } from '../services/sse';
+import { useWorkoutStore } from './workoutStore';
 import type { ChatDisplayMessage } from '../types';
+
+/** MCP tool names that modify session data — trigger a workout store refresh. */
+const SESSION_TOOLS = new Set([
+  'update_session',
+  'save_workout_plan',
+  'add_session_to_week',
+  'delete_session',
+]);
 
 interface ChatState {
   messages: ChatDisplayMessage[];
@@ -79,6 +88,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 tc.name === event.name ? { ...tc, status: 'complete' as const } : tc
               ),
             };
+            // Refresh workout store when session-modifying tools complete
+            if (event.name && SESSION_TOOLS.has(event.name)) {
+              useWorkoutStore.getState().refreshActiveSession();
+            }
             break;
           case 'text':
             // Backend sends cumulative text

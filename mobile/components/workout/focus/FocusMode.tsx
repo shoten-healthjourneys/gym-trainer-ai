@@ -3,6 +3,7 @@ import { Alert, Modal, Platform, StyleSheet, View } from 'react-native';
 import { Portal } from 'react-native-paper';
 import { useKeepAwake } from 'expo-keep-awake';
 import { colors } from '../../../theme';
+import { useWorkoutStore } from '../../../stores/workoutStore';
 import { FocusModeHeader } from './FocusModeHeader';
 import { FocusModeStandard } from './FocusModeStandard';
 import { FocusModeSupersetStandard } from './FocusModeSupersetStandard';
@@ -29,6 +30,7 @@ export function FocusMode({
 }: FocusModeProps) {
   const [currentGroupIndex, setCurrentGroupIndex] = useState(initialGroupIndex);
   const [showComplete, setShowComplete] = useState(false);
+  const refreshActiveSession = useWorkoutStore((s) => s.refreshActiveSession);
 
   useKeepAwake();
 
@@ -166,6 +168,7 @@ export function FocusMode({
             onClose={handleClose}
             onPrev={handlePrev}
             onNext={handleNext}
+            onRefresh={refreshActiveSession}
           />
           <View style={styles.content}>
             {renderContent()}
