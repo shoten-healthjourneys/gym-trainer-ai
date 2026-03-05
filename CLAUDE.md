@@ -61,6 +61,15 @@ before anything deploys. Main = production.
 ## Shared interfaces (types/index.ts) — owned by frontend-workout-agent
 Other agents should coordinate via lead before modifying types.
 
+## Production Access
+- When Shoten references real workout data (e.g. "yesterday's session"), always use the
+  **production API**, not the local database
+- Never attempt direct Azure PostgreSQL connections — firewall blocks external access
+- Auth flow: read `PROD_EMAIL` and `PROD_DEV_USER_PASSWORD` from `backend/.env`,
+  call `POST /auth/login`, then use the returned `accessToken` as a Bearer token
+- Figure out the full chain (credentials → login → API calls) autonomously — don't
+  ask Shoten to walk through each step
+
 ## Local Development
 
 ### Prerequisites

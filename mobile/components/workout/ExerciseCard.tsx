@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, StyleSheet, TouchableOpacity, View } from 'react-native';
-import { Snackbar, Text } from 'react-native-paper';
+import { Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Card, CardContent, Button } from '../ui';
 import { colors, spacing } from '../../theme';
@@ -43,7 +43,6 @@ export function ExerciseCard({
   const toggleExpand = onToggleExpand ?? (() => setInternalExpanded((prev) => !prev));
 
   const [addDialogVisible, setAddDialogVisible] = useState(false);
-  const [snackMessage, setSnackMessage] = useState('');
   const [micAllowed, setMicAllowed] = useState(false);
   const [phase, setPhase] = useState<CardPhase>('idle');
   const [stopwatchStartedAt, setStopwatchStartedAt] = useState<number | null>(null);
@@ -169,7 +168,6 @@ export function ExerciseCard({
                 <VoiceButton
                   exerciseName={exercise.name}
                   sessionId={sessionId}
-                  onClarification={setSnackMessage}
                 />
               )}
               {phase === 'idle' && (
@@ -212,14 +210,6 @@ export function ExerciseCard({
         </CardContent>
       )}
 
-      <Snackbar
-        visible={!!snackMessage}
-        onDismiss={() => setSnackMessage('')}
-        duration={6000}
-        style={styles.snackbar}
-      >
-        <Text style={styles.snackbarText}>{snackMessage}</Text>
-      </Snackbar>
     </Card>
   );
 }
@@ -251,14 +241,5 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     paddingTop: spacing.base,
     gap: spacing.base,
-  },
-  snackbar: {
-    backgroundColor: colors.surfaceElevated,
-    borderWidth: 1,
-    borderColor: colors.accent,
-  },
-  snackbarText: {
-    color: colors.textPrimary,
-    fontSize: 14,
   },
 });
