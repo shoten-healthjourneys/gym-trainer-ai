@@ -1,11 +1,12 @@
-import React, { useCallback, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet, View } from 'react-native';
-import { ActivityIndicator, Modal, Portal, Text } from 'react-native-paper';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, IconButton, Modal, Portal, Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Button } from '../ui';
 import { colors, spacing, radii } from '../../theme';
 import { startRecording, stopAndUpload } from '../../services/voice';
 import { useWorkoutStore } from '../../stores/workoutStore';
+import { useChatStore } from '../../stores/chatStore';
 import type { Audio } from 'expo-av';
 import type { VoiceParseResponse, VoiceParsedSet } from '../../types';
 
@@ -14,18 +15,47 @@ type VoiceState = 'idle' | 'recording' | 'processing';
 interface VoiceButtonProps {
   exerciseName: string;
   sessionId: string;
-  onClarification?: (message: string) => void;
 }
 
-export function VoiceButton({ exerciseName, sessionId, onClarification }: VoiceButtonProps) {
+export function VoiceButton({ exerciseName, sessionId }: VoiceButtonProps) {
   const [state, setState] = useState<VoiceState>('idle');
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [parsedSet, setParsedSet] = useState<VoiceParsedSet | null>(null);
+  const [clarification, setClarification] = useState<string | null>(null);
+  const [chatInput, setChatInput] = useState('');
   const recordingRef = useRef<Audio.Recording | null>(null);
+  const clarificationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const logSet = useWorkoutStore((s) => s.logSet);
   const fetchExerciseLogs = useWorkoutStore((s) => s.fetchExerciseLogs);
+
+  const clearClarification = useCallback(() => {
+    setClarification(null);
+    setChatInput('');
+    setTranscript('');
+    if (clarificationTimer.current) {
+      clearTimeout(clarificationTimer.current);
+      clarificationTimer.current = null;
+    }
+  }, []);
+
+  // Auto-clear clarification after 8 seconds
+  useEffect(() => {
+    if (clarification) {
+      clarificationTimer.current = setTimeout(clearClarification, 8000);
+      return () => {
+        if (clarificationTimer.current) clearTimeout(clarificationTimer.current);
+      };
+    }
+  }, [clarification, clearClarification]);
+
+  const handleClarificationSend = useCallback(() => {
+    if (!chatInput.trim()) return;
+    const message = `I'm voice logging for ${exerciseName}. I said '${transcript}'. System asked: '${clarification}'. My answer: ${chatInput.trim()}. Please log this set for session ${sessionId}.`;
+    useChatStore.getState().sendMessage(message);
+    clearClarification();
+  }, [chatInput, exerciseName, transcript, clarification, sessionId, clearClarification]);
 
   const handleToggle = useCallback(async () => {
     if (state === 'recording') {
@@ -44,14 +74,14 @@ export function VoiceButton({ exerciseName, sessionId, onClarification }: VoiceB
         );
         if (result.needsClarification) {
           setTranscript(result.transcript ?? '');
-          onClarification?.(result.needsClarification);
+          setClarification(result.needsClarification);
         } else if (result.parsed) {
           setTranscript(result.transcript ?? '');
           setParsedSet(result.parsed);
           setConfirmVisible(true);
         }
       } catch {
-        onClarification?.('Voice recording failed. Please try again.');
+        setClarification('Voice recording failed. Please try again.');
       } finally {
         recordingRef.current = null;
         setState('idle');
@@ -67,7 +97,7 @@ export function VoiceButton({ exerciseName, sessionId, onClarification }: VoiceB
         Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true }).start();
       }
     }
-  }, [state, exerciseName, sessionId, scaleAnim, onClarification]);
+  }, [state, exerciseName, sessionId, scaleAnim]);
 
   const handleConfirm = useCallback(async () => {
     if (!parsedSet) return;
@@ -113,6 +143,38 @@ export function VoiceButton({ exerciseName, sessionId, onClarification }: VoiceB
       <Text variant="labelSmall" style={styles.hint}>
         {state === 'idle' ? 'Tap to record' : state === 'recording' ? 'Tap to stop' : 'Processing...'}
       </Text>
+
+      {clarification && (
+        <View style={styles.clarificationBox}>
+          <Text variant="bodySmall" style={styles.clarificationText}>
+            {clarification}
+          </Text>
+          <View style={styles.clarificationRow}>
+            <TextInput
+              style={styles.clarificationInput}
+              value={chatInput}
+              onChangeText={setChatInput}
+              placeholder="Type answer..."
+              placeholderTextColor={colors.textMuted}
+              onSubmitEditing={handleClarificationSend}
+              returnKeyType="send"
+            />
+            <IconButton
+              icon="send"
+              size={20}
+              iconColor={colors.accent}
+              onPress={handleClarificationSend}
+              disabled={!chatInput.trim()}
+            />
+            <IconButton
+              icon="close"
+              size={20}
+              iconColor={colors.textMuted}
+              onPress={clearClarification}
+            />
+          </View>
+        </View>
+      )}
 
       <Portal>
         <Modal
@@ -191,6 +253,33 @@ const styles = StyleSheet.create({
   },
   hint: {
     color: colors.textMuted,
+  },
+  clarificationBox: {
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: radii.md,
+    padding: spacing.sm,
+    marginTop: spacing.xs,
+    width: '100%',
+    borderWidth: 1,
+    borderColor: colors.warning,
+  },
+  clarificationText: {
+    color: colors.warning,
+    marginBottom: spacing.xs,
+  },
+  clarificationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  clarificationInput: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    color: colors.textPrimary,
+    fontSize: 14,
   },
   modal: {
     backgroundColor: colors.surface,
